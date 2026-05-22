@@ -3,20 +3,28 @@ import json
 from dotenv import load_dotenv
 from langchain.messages import SystemMessage,HumanMessage,AIMessage
 import unstructured
+from langchain.retrievers import EnsembleRetriever
+from langchain.retrievers.self_query.base import SelfQueryRetriever
+from langchain.chains.query_constructor.base import AttributeInfo
 from typing import List,Dict
 from langchain_google_genai import ChatGenerativeAI
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_community.retrievers import BM25Retriever
+
 from unstructured.partition.auto import partition
 from unstructured.chunking.title import chunk_by_title
 
 
 class Ingestion:
-    def __init__ (self,chunks,docs,elements):
+    def __init__ (self, docs, doc_category: str, ticker: str = "N/A", year: int = 0):
         self.docs=docs
+        self.doc_category=doc_category
         self.chunks=[]
         self.elements=[]
+        self.ticker = ticker
+        self.year = year
         self.model=ChatGenerativeAI(model="gemini-2.5-flash",temperature=1)
     def partition(self):
         if not os.path.exists(self.docs):
@@ -50,18 +58,18 @@ class Ingestion:
             "types":[],
         }
         if hasattr(chunk,"text") and chunk.text:
-            content["text"].append(self.chunks.text)
+            content["text"].append(chunk.text)
         if hasattr(chunk,"metadata") and hasattr(chunk.metadata,"orig_elements"):
-            for element in self.chunks.metadata.orig_elements:
+            for element in chunk.metadata.orig_elements:
                 ele_type=(type(element).__name__).title()
 
-            if ele_type=="Table":
-                content["types"].append("Table")
-                html_table=getattr(self.chunks.metadata,"table_as_html",element.text)
-                content["tables"].append(html_table)
-            if ele_type=="Image":
-                content["types"].append("Image")
-                content["images"].append(element.metadata.image_base64)
+                if ele_type=="Table":
+                    content["types"].append("Table")
+                    html_table=getattr(chunk.metadata,"table_as_html",element.text)
+                    content["tables"].append(html_table)
+                if ele_type=="Image":
+                    content["types"].append("Image")
+                    content["images"].append(element.metadata.image_base64)
         content["types"]=list(set(content["types"]))
         return content
     def summary(self,text:str,tables:list[str],images:list[str])->str:
@@ -86,18 +94,18 @@ class Ingestion:
                     "type":"image_url",
                     "image_url":{"url":f"data:image/jpeg;base64,{img_base64}"}
                 })
-                message=HumanMessage(content=message_content)
-                response=self.model.invoke([message])
+            message=HumanMessage(content=message_content)
+            response=self.model.invoke([message])
             return response.content
         except Exception as e:
             return (f"Summary failed due to {e}")
 
     def document(self):
         langchain_document=[]
-        if len(self.chunks==0):
+        if len(self.chunks)==0:
             raise ValueError("No data found")
         for chunk in self.chunks:
-            data=self.sep_contents()
+            data=self.sep_contents(chunk)
 
             summary_gen=self.summary(
                 text=data["text"],
@@ -107,6 +115,9 @@ class Ingestion:
             docs=Document(
                 page_content=summary_gen,
                 metadata={
+                    "doc_category": self.doc_category,
+                    "ticker": self.ticker,
+                    "year": self.year,
                     "original_data":json.dumps(
                         {
                             'raw_text':data['text'],
@@ -130,8 +141,38 @@ class Ingestion:
         )
         vector_db=Chroma.from_documents(
             documents=summary,
-            embedding_function=embedding_model,
+            embedding=embedding_model,
             persist_directory=persist_directory,
             collection_metadata={"hnsw:space": "cosine"}
         )
         return vector_db
+
+class Retriever(Ingestion):
+    def __init__(self,vector_db,langchain_documents):
+        self.vector_retriever=vector_db.as_retriever(search_kwargs={"k":5})
+        self.bm25_retriever=BM25Retriever.from_documents(langchain_documents)
+        self.bm25_retriever.k = 5
+        self.hybrid_retriever=EnsembleRetriever(
+            retrievers=[self.vector_retriever,self.bm25_retriever],
+            weights=[0.7,0.3]
+        )
+        self.llm=ChatGenerativeAI(model="gemini-2.5-flash",temperature=0)
+        metadata_field_info = [
+            AttributeInfo(
+                name="doc_category",
+                description="The type of document. Either 'finance' for SEC filings or 'general_doc' for technical documentation, manuals, or theory.",
+                type="string",
+            ),
+            AttributeInfo(
+                name="ticker",
+                description="The stock ticker symbol. Only applies to 'finance' documents (e.g., 'AAPL'). Is 'N/A' for general docs.",
+                type="string",
+            ),
+            AttributeInfo(
+                name="year",
+                description="The financial year. Only applies to 'finance' docs. Is 0 for general docs.",
+                type="integer",
+            ),
+        ]
+
+        
