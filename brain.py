@@ -78,7 +78,7 @@ The node calls the retriever function and retrives the necessary documents
 
     return {"retrived":documents}
 
-def retrieved_docs(BaseModel):
+class retrieved_docs(BaseModel):
     docs:Annotated[str,Field(description="Format the docs grade it if revelant return pass else fail")]
 
 def grade(state:RAGSubGraph):
@@ -147,16 +147,16 @@ def gen_answer(state:RAGSubGraph):
     </user_question>
     
 """
-    prompt=ChatPromptTemplate.from_messages(
-        ("system",system_prompt)
-        ("human",human_prompt)
-    )
+    prompt=ChatPromptTemplate.from_messages([
+        ("system",system_prompt),
+        ("human",human_prompt),
+    ])
     generating_ans=prompt|llm
     
-    result=generating_ans.invoke(
+    result=generating_ans.invoke({
         "possible_ans":context_string,
         "question":question
-    )
+    })
     return{"answer":result.content}
 
 class HallucinationGrading(BaseModel):
@@ -171,7 +171,7 @@ def hal_check(state:RAGSubGraph):
     system_prompt = """You are a strict auditor evaluating an AI-generated report. 
 Your only task is to determine whether the generated answer is entirely grounded in the provided source documents.
 If the answer contains ANY numbers, facts, or claims that are not explicitly stated in the source documents, it is a hallucination.
-If it is a hallucination, grade it 'yes'. If it is perfectly grounded, grade it 'no'."""
+If it is a hallucination, grade it 'Hallucination'. If it is perfectly grounded, grade it 'No Hallucination'."""
 
     human_prompt="""
 Here are the source documents retrieved from the SEC 10-K:
@@ -186,17 +186,17 @@ Here is the generated answer to evaluate:
 
 Carefully analyze the generation against the documents. Does the generation contain any information, metrics, or claims that cannot be proven by the source documents? Provide your reasoning and your binary score.
 """
-    generation=ChatPromptTemplate.from_messages(
+    generation=ChatPromptTemplate.from_messages([
         ("system",system_prompt),
         ("human",human_prompt)
-    )
+    ])
     structured_output=llm.with_structured_output(HallucinationGrading)
     gen_cycle=generation|structured_output
-    result=gen_cycle.invoke(
+    result=gen_cycle.invoke({
         "documents":context_string,
-        "answer":answer,
-    )
-    return {"hallucination":result.content}
+        "answer":answer
+    })
+    return {"hallucination":result.hallucination}
 
 def check_hallucination(state:RAGSubGraph)->Literal["Hallucination","No Hallucination"]:
     if state["hallucination"]=="Hallucination":
@@ -204,7 +204,7 @@ def check_hallucination(state:RAGSubGraph)->Literal["Hallucination","No Hallucin
     else:
         return "Answer check"
 
-def cond_answer(BaseModel):
+class cond_answer(BaseModel):
     "Binary score for the generated answer"
     scoring:Annotated[str,Field("Return strictly sufficient if the generated answercorrectly answers the question else not sufficient")]
 
@@ -226,18 +226,18 @@ based on the user's query
 {question}
 <original_question>
 """
-    prompt=ChatPromptTemplate.from_messages(
+    prompt=ChatPromptTemplate.from_messages([
         ("system",system_prompt),
-        ("human",human_prompt),
+        ("human",human_prompt)
 
-    )
-    structured_out=llm.invoke(cond_answer)
+    ])
+    structured_out=llm.with_structured_output(cond_answer)
     gen_out=prompt|structured_out
-    result=gen_out.invoke(
-        "answer",answer,
-        "question",question,
-    )
-    return {"is_sufficient",result.content}
+    result=gen_out.invoke({
+        "answer":answer,
+        "question":question,
+    })
+    return {"is_sufficient":result.scoring}
 
 def sufficient(state:RAGSubGraph)->Literal["sufficient","not sufficient"]:
     if state["is_sufficient"]=="sufficient":
@@ -266,17 +266,17 @@ Here is the user's original question:
 
 Rewrite this question into a focused, keyword-rich search query optimized for a financial document database.
 """
-    prompt=ChatPromptTemplate.from_messages(
+    prompt=ChatPromptTemplate.from_messages([
         ("system",system_prompt),
-        ("human",human_prompt),
-    )
+        ("human",human_prompt)
+    ])
     structured_out=llm.with_structured_output(RewrittenQuery)
     gen_ans=prompt|structured_out
-    result=gen_ans.invoke(
-       "question",question, 
-    )
-    return {"question",result.content}
+    result=gen_ans.invoke({
+       "question":question, 
+    })
+    return {"question":result.new_query}
 
 def to_parent(state:RAGSubGraph):
     final_ans=state["answer"]
-    return {"output",final_ans}
+    return {"output":final_ans}
