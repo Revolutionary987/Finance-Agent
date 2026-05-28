@@ -33,6 +33,7 @@ class RAGSubGraph(TypedDict):
     answer:str
     hallucination:str
     is_sufficient:str
+    final_output:str
 
 def output(state:MainGraph):
     output=state["output"]
@@ -195,7 +196,7 @@ Carefully analyze the generation against the documents. Does the generation cont
         "documents":context_string,
         "answer":answer,
     )
-    return {"hallucination":result}
+    return {"hallucination":result.content}
 
 def check_hallucination(state:RAGSubGraph)->Literal["Hallucination","No Hallucination"]:
     if state["hallucination"]=="Hallucination":
@@ -217,13 +218,13 @@ return sufficient if it exactly answers the question else not sufficient
 """
     human_prompt="""
 Evaluate the generated answers
-<answer>
+<generated_answer>
 {answer}
-<answer>
+<generated_answer>
 based on the user's query
-<question>
+<original_question>
 {question}
-<question>
+<original_question>
 """
     prompt=ChatPromptTemplate.from_messages(
         ("system",system_prompt),
@@ -236,11 +237,46 @@ based on the user's query
         "answer",answer,
         "question",question,
     )
-    return {"is_sufficient",result}
+    return {"is_sufficient",result.content}
+
 def sufficient(state:RAGSubGraph)->Literal["sufficient","not sufficient"]:
     if state["is_sufficient"]=="sufficient":
         return "output"
     else:
         return "Rewrite"
-def rewrite_query(state:RAGSubGraph):
     
+class RewrittenQuery(BaseModel):
+    """The optimized query for vector search."""
+    new_query: Annotated[str,Field(description="The rewritten, highly optimized search query.")]
+
+def rewrite_query(state:RAGSubGraph):
+    question=state["question"]
+    system_prompt = """You are Aegis, an elite financial researcher and query optimization expert.
+Your task is to take a user's question and rewrite it to be highly optimized for semantic vector search across SEC 10-K filings.
+Look at the user's original intent, strip away unnecessary conversational words, and add relevant financial keywords (like 'revenue', 'GAAP', 'fiscal year', 'margin') if they are implied.
+Return ONLY the optimized search query.
+"""
+    human_prompt = """
+The previous search failed to find relevant financial documents. We need a better query.
+
+Here is the user's original question:
+<original_question>
+{question}
+</original_question>
+
+Rewrite this question into a focused, keyword-rich search query optimized for a financial document database.
+"""
+    prompt=ChatPromptTemplate.from_messages(
+        ("system",system_prompt),
+        ("human",human_prompt),
+    )
+    structured_out=llm.with_structured_output(RewrittenQuery)
+    gen_ans=prompt|structured_out
+    result=gen_ans.invoke(
+       "question",question, 
+    )
+    return {"question",result.content}
+
+def to_parent(state:RAGSubGraph):
+    final_ans=state["answer"]
+    return {"output",final_ans}
