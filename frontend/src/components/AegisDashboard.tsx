@@ -180,7 +180,7 @@ export function AegisDashboard() {
 
     try {
       // Send the feedback to FastAPI
-      const response = await fetch("http://127.0.0.1:8000/app/feedback", {
+      const response = await fetch("http://aegis.onrender.com/app/feedback", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -231,7 +231,7 @@ export function AegisDashboard() {
 
   // 3. Send it (Notice we REMOVED the "Content-Type" header. 
   // The browser automatically sets it to multipart/form-data when using FormData)
-  const response = await fetch("http://127.0.0.1:8000/app/call", {
+  const response = await fetch("https://aegis.onrender.com/app/call", {
     method: "POST",
     body: formData, 
   });
