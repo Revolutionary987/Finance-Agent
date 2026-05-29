@@ -1,17 +1,31 @@
+import os
 from langgraph.graph import StateGraph, START, END
 from langchain_google_genai import ChatGoogleGenerativeAI
 from typing import TypedDict, Annotated, List, Literal
 from langgraph.graph.message import add_messages
-from langchain_core.messages import BaseMessage, HumanMessage, AIMessage
+from langchain_core.messages import BaseMessage, HumanMessage
 from pydantic import BaseModel, Field
-from retriever import Retriver # Ensure this matches your file import
+from retriever import Retriever 
 from langchain_core.prompts import ChatPromptTemplate
+from langgraph.checkpoint.postgres import PostgresSaver
+from psycopg_pool import ConnectionPool
+from dotenv import load_dotenv
+import uuid
+
+load_dotenv()
+DB_URL = os.getenv("DATABASE_URL")
+
+session_thread_id = str(uuid.uuid4())
+config = {"configurable": {"thread_id": session_thread_id}}
+
 
 llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
-retriever = Retriver() 
+retriever = Retriever(vector_db=None, langchain_documents=[])
+
 
 class MainGraph(TypedDict):
     question: Annotated[List[BaseMessage], add_messages]
+    human_feedback:str
     output: str
 
 class Display(BaseModel):
@@ -269,7 +283,19 @@ def rewrite_query(state: RAGSubGraph):
 def to_parent(state: RAGSubGraph):
     final_ans = state["answer"]
     return {"output": final_ans}
--
+
+def hitl(state:MainGraph):
+    return state
+def check_hitl(state:MainGraph)->Literal["Output","SubGraph","hitl"]:
+    feedback = state.get("human_feedback")
+    if feedback =="Yes":
+        return "Output"
+    elif feedback=="No":
+        return "Subgraph"
+    else:
+        return "hitl"
+
+
 child = StateGraph(RAGSubGraph)
 
 child.add_node("retriever", retriever_graph)
@@ -280,6 +306,7 @@ child.add_node("Answer check", answer_check)
 child.add_node("Rewrite", rewrite_query)
 child.add_node("output", to_parent)
 
+
 child.add_edge(START, "retriever")
 child.add_edge("retriever", "Grading")
 child.add_conditional_edges("Grading", examiner)
@@ -287,14 +314,25 @@ child.add_edge("Generate answer", "hallucination")
 child.add_conditional_edges("hallucination", check_hallucination)
 child.add_conditional_edges("Answer check", sufficient)
 child.add_edge("Rewrite", "retriever")
-child.add_edge("output", END)
+child.add_edge("output",END)
+
 
 rag = child.compile()
 
 parent = StateGraph(MainGraph)
+parent.add_node("hitl",hitl)
 parent.add_node("Subgraph", rag)
 parent.add_node("Output", output)
 parent.add_edge(START, "Subgraph")
-parent.add_edge("Subgraph", "Output")
+parent.add_edge("Subgraph", "hitl")
+parent.add_conditional_edges("hitl",check_hitl)
 parent.add_edge("Output", END)
-app = parent.compile()
+
+
+with ConnectionPool(conninfo=DB_URL,max_size=20) as pool:
+    memory=PostgresSaver(pool)
+    memory.setup()
+    app = parent.compile(
+        checkpointer=memory,
+    interrupt_before=["hitl"]
+    )
