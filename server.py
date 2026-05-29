@@ -33,7 +33,7 @@ app=FastAPI(lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["https://aegis.onrender.com/app"], 
+    allow_origins=["https://aegis-ui-l596.onrender.com"], 
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
