@@ -1,5 +1,6 @@
 import os
 import uuid
+import shutil
 from fastapi import FastAPI,HTTPException,UploadFile,File,Form
 from pydantic import BaseModel
 from typing import Optional
@@ -10,6 +11,7 @@ from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from agent import graph
 from fastapi.middleware.cors import CORSMiddleware
+from ingestion import Ingestion
 
 load_dotenv()
 DB_URL=os.getenv("DATABASE_URL")
@@ -54,11 +56,23 @@ async def restarting(question: str = Form(...),
     thread_id=thread_id or str(uuid.uuid4())
     config={"configurable":{"thread_id":thread_id}}
     if file:
-        print("Received file:"(file).filename)
+        os.makedirs("Docs",exist_ok=True)
+        file_path=os.path.join("Docs",file.filename)
+
+        with open(file_path,"wb") as buffer:
+            shutil.copyfileobj(file.file,buffer)
+        ingestor=Ingestion(
+            docs=file_path
+        )
+        ingestor.partition()
+        ingestor.chunkdocs()
+        final_docs=ingestor.document()
+        chroma_db=ingestor.embedding(summary=final_docs)
+        question = f"{question}\n\n[System: The user attached a file. It has been ingested into the Chroma Vector Database. Use your Retrieval tools to search it.]"
 
     initial_ques={"question":[HumanMessage(content=(question))]}
     memory=PostgresSaver(pool)
-    state=graph.invoke(initial_ques,config=config)
+    state=agent.invoke(initial_ques,config=config)
     # same as .get function of dictionary
     messages_display=state.get("output","Drafting the answer")
     return{
