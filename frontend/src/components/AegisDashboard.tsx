@@ -33,7 +33,7 @@ export function AegisDashboard() {
   const [messages, setMessages] = useState<Message[]>([
     { id: "1", role: "system", content: "Aegis initialized. Ready for SEC auditing and fraud analysis." }
   ]);
-  
+  const [threadId, setThreadId] = useState<string | null>(null);
   // State for Trace view
   const [traceNodes, setTraceNodes] = useState<TraceNode[]>([]);
   
@@ -120,7 +120,7 @@ export function AegisDashboard() {
     }, 1500);
 
     try {
-      const res = await mockFetchToFastAPI(text, file);
+      const res = await realFetchToFastAPI(text, file);
       
       const aiMsg: Message = {
         id: Date.now().toString(),
@@ -163,7 +163,7 @@ export function AegisDashboard() {
     }
   };
 
-  const handleApproval = (approved: boolean) => {
+  const handleApproval = async (approved: boolean) => {
     setIsAwaitingFeedback(false);
     addTelemetry(`[SSE] Interrupt resolved: User ${approved ? "approved" : "denied"} the action.`, approved ? "success" : "warning");
     
@@ -176,53 +176,87 @@ export function AegisDashboard() {
       outputs: { user_action: approved ? "Approved" : "Rejected" } 
     });
 
-    if (approved) {
-      updateTraceNode({ id: "node_6_exec", name: "▶ Escalation_Execution", status: "running" });
-      addTelemetry(`[SSE] Executing requested action against SEC Database...`, "tool");
-      setTimeout(() => {
-        updateTraceNode({ id: "node_6_exec", name: "▶ Escalation_Execution", status: "success", latency: "650ms", outputs: { report_generated: true } });
+    if (!threadId) return;
+
+    try {
+      // Send the feedback to FastAPI
+      const response = await fetch("http://127.0.0.1:8000/app/feedback", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          thread_id: threadId,
+          status: approved ? "Yes" : "No",
+          feedback: approved ? undefined : "Action rejected by auditor."
+        }),
+      });
+
+      const data = await response.json();
+
+      if (approved) {
+        updateTraceNode({ id: "node_6_exec", name: "▶ Escalation_Execution", status: "running" });
+        addTelemetry(`[SSE] Executing requested action against SEC Database...`, "tool");
+        setTimeout(() => {
+          updateTraceNode({ id: "node_6_exec", name: "▶ Escalation_Execution", status: "success", latency: "650ms", outputs: { report_generated: true } });
+          setMessages((prev) => [
+            ...prev,
+            { id: Date.now().toString(), role: "ai", content: data.final_output || "Variance report generated and escalated successfully." }
+          ]);
+          addTelemetry(`[SSE] Execution complete.`, "success");
+        }, 1000);
+      } else {
+        updateTraceNode({ id: "node_6_cancel", name: "▶ Re_Route_Handler", status: "success", latency: "100ms", outputs: { cancelled: true } });
         setMessages((prev) => [
           ...prev,
-          { id: Date.now().toString(), role: "ai", content: `Variance report generated and escalated to Auditor Queue successfully.` }
+          { id: Date.now().toString(), role: "ai", content: data.final_output || `Action rejected. Awaiting further prompt modifications.` }
         ]);
-        addTelemetry(`[SSE] Execution complete.`, "success");
-      }, 1000);
-    } else {
-      updateTraceNode({ id: "node_6_cancel", name: "▶ Re_Route_Handler", status: "success", latency: "100ms", outputs: { cancelled: true } });
-      setMessages((prev) => [
-        ...prev,
-        { id: Date.now().toString(), role: "ai", content: `Action rejected. Awaiting further prompt modifications.` }
-      ]);
+      }
+    } catch (error) {
+      addTelemetry(`[SSE] Error sending feedback to backend.`, "error");
     }
   };
 
-  const mockFetchToFastAPI = async (input: string, file: File | null) => {
-    return new Promise<{ thread_id: string; message_display: string; requires_approval?: boolean }>((resolve) => {
-      if (input.toLowerCase().includes("audit") || (file && file.name.includes("10k"))) {
-        setTimeout(() => {
-          setMultimodalData("active"); 
-          addTelemetry(`[SSE] Detected anomaly in Subscription Services segment.`, "warning");
-        }, 2200);
-        
-        setTimeout(() => {
-          resolve({
-            thread_id: "thread_x8f9a2",
-            message_display: "Anomaly flagged.",
-            requires_approval: true
-          });
-        }, 2500);
-      } else {
-        setTimeout(() => {
-          setMultimodalData(null);
-          resolve({
-            thread_id: "thread_y9b1c3",
-            message_display: "Analysis complete. The financials appear sound with no immediate red flags detected in the latest filings.",
-          });
-        }, 2200);
-      }
-    });
-  };
+  const realFetchToFastAPI = async (input: string, file: File | null) => {
+  // 1. Create a FormData object (the correct way to send files)
+  const formData = new FormData();
+  formData.append("question", input);
+  
+  if (threadId) {
+    formData.append("thread_id", threadId);
+  }
 
+  // 2. Append the actual raw file binary to the payload
+  if (file) {
+    formData.append("file", file);
+  }
+
+  // 3. Send it (Notice we REMOVED the "Content-Type" header. 
+  // The browser automatically sets it to multipart/form-data when using FormData)
+  const response = await fetch("http://127.0.0.1:8000/app/call", {
+    method: "POST",
+    body: formData, 
+  });
+
+
+    if (!response.ok) {
+      throw new Error("Backend connection failed");
+    }
+
+    const data = await response.json();
+
+    // Save the thread_id so the database remembers us next time
+    if (!threadId) {
+      setThreadId(data.thread_id);
+    }
+
+    // Determine if we need human approval (you can map this to specific output texts later)
+    const requires_approval = data.message_display.includes("anomaly") || data.message_display.includes("Drafting");
+
+    return {
+      thread_id: data.thread_id,
+      message_display: data.message_display,
+      requires_approval: requires_approval
+    };
+  };
   return (
     <div className="flex h-screen w-full bg-[#050505] text-zinc-100 font-sans p-6 gap-6 relative">
       
