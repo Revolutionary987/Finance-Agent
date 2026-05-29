@@ -286,7 +286,7 @@ def to_parent(state: RAGSubGraph):
 
 def hitl(state:MainGraph):
     return state
-def check_hitl(state:MainGraph)->Literal["Output","SubGraph","hitl"]:
+def check_hitl(state:MainGraph)->Literal["Output","Subgraph","hitl"]:
     feedback = state.get("human_feedback")
     if feedback =="Yes":
         return "Output"

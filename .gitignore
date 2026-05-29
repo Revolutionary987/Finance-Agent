@@ -1,3 +1,41 @@
 .env
 .vscode
 data.py
+
+# =====================================================================
+# Frontend (Next.js) Monorepo Overrides
+# =====================================================================
+
+# Dependencies
+frontend/node_modules/
+frontend/.pnp
+frontend/.pnp.*
+frontend/.yarn/*
+!frontend/.yarn/patches
+!frontend/.yarn/plugins
+!frontend/.yarn/releases
+!frontend/.yarn/versions
+
+# Testing
+frontend/coverage/
+
+# Next.js build outputs
+frontend/.next/
+frontend/out/
+
+# Production build artifact
+frontend/build/
+
+# Debug logs
+frontend/npm-debug.log*
+frontend/yarn-debug.log*
+frontend/yarn-error.log*
+frontend/.pnpm-debug.log*
+
+# Vercel & TypeScript artifacts
+frontend/.vercel/
+frontend/*.tsbuildinfo
+frontend/next-env.d.ts
+
+# Local Environment variables (Keep your API keys off GitHub!)
+frontend/.env*

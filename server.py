@@ -9,12 +9,13 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
 from agent import graph
+from fastapi.middleware.cors import CORSMiddleware
 
 load_dotenv()
 DB_URL=os.getenv("DATABASE_URL")
 if not DB_URL:
     raise ValueError("Couldn't find the database")
-pool = ConnectionPool(conninfo=DB_URL, max_size=20, open=False)
+pool = ConnectionPool(conninfo=DB_URL, max_size=5,kwargs={"autocommit": True}, open=False)
 agent=None
 @asynccontextmanager
 async def lifespan(FastAPI):
@@ -27,6 +28,14 @@ async def lifespan(FastAPI):
     yield
     pool.close()
 app=FastAPI(lifespan=lifespan)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:3000"], 
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 class Restart(BaseModel):
     question:str
     thread_id:Optional[str]=None
