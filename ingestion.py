@@ -13,6 +13,7 @@ from langchain_core.documents import Document
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.retrievers import BM25Retriever
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
 
 from unstructured.partition.auto import partition
 from unstructured.chunking.title import chunk_by_title
@@ -129,14 +130,7 @@ class Ingestion:
         return langchain_documents
     
     def embedding(self,langchain_documents,persist_directory="ddb/chroma_db"):
-        model_name="BAAI/bge-m3"
-        model_kwargs={"device":"cpu"}
-        encode_kwargs={"normalize_embeddings":True}
-        embedding_model=HuggingFaceEmbeddings(
-            model_name=model_name,
-            model_kwargs=model_kwargs,
-            encode_kwargs=encode_kwargs
-        )
+        embedding_model = GoogleGenerativeAIEmbeddings(model="models/text-embedding-004")
         vector_db=Chroma.from_documents(
             documents=langchain_documents,
             embedding=embedding_model,
