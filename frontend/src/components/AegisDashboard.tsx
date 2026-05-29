@@ -24,7 +24,7 @@ export type TelemetryEntry = {
   id: string;
   timestamp: string;
   text: string;
-  type: "info" | "tool" | "warning" | "success";
+  type: "info" | "tool" | "warning" | "success"|"error";
 };
 
 type ViewMode = "dashboard" | "trace";
