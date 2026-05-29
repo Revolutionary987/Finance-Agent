@@ -8,17 +8,20 @@ from psycopg_pool import ConnectionPool
 from langgraph.checkpoint.postgres import PostgresSaver
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
-from agent import brain
+from agent import graph
 
 load_dotenv()
 DB_URL=os.getenv("DATABASE_URL")
 if not DB_URL:
     raise ValueError("Couldn't find the database")
-pool=PostgresSaver(conninfo=DB_URL,max_size=20,open=False)
-
+pool = ConnectionPool(conninfo=DB_URL, max_size=20, open=False)
+agent=None
 @asynccontextmanager
 async def lifespan(FastAPI):
     pool.open()
+    memory = PostgresSaver(pool)
+    memory.setup()
+    agent = graph.compile(checkpointer=memory, interrupt_before=["hitl"])
     # yield is like return but it won't end the function it freezes it then continues when it is called
     yield
     pool.close()
@@ -37,7 +40,7 @@ async def restarting(restart:Restart):
     config={"configurable":{"thread_id":thread_id}}
     initial_ques={"question":[HumanMessage(content=(restart.question))]}
     memory=PostgresSaver(pool)
-    state=brain.invoke(initial_ques,config=config)
+    state=graph.invoke(initial_ques,config=config)
     # same as .get function of dictionary
     messages_display=state.get("output","Drafting the answer")
     return{
@@ -51,9 +54,9 @@ async def receivefeedback(feedback:Feedbackrequest):
     config = {"configurable": {"thread_id": feedback.thread_id}}
     try:
         if feedback.status=="Yes":
-            brain.update_state(config, {"human_feedback": "Yes"}, as_node="hitl")
+            graph.update_state(config, {"human_feedback": "Yes"}, as_node="hitl")
         elif feedback.status=="No":
-            brain.update_state(
+            graph.update_state(
                 config,
                 {"human_feedback":"No",
                  # send the human feedback to the llm 
@@ -61,11 +64,10 @@ async def receivefeedback(feedback:Feedbackrequest):
                 }
                 ,as_node="hitl")
             
-        final_state = brain.invoke(None, config=config)
+        final_state = graph.invoke(None, config=config)
         return {
                 "status": "success",
                 "final_output": final_state.get("output", "No final output generated.")
             }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-
