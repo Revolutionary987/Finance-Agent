@@ -18,6 +18,7 @@ pool = ConnectionPool(conninfo=DB_URL, max_size=20, open=False)
 agent=None
 @asynccontextmanager
 async def lifespan(FastAPI):
+    global agent
     pool.open()
     memory = PostgresSaver(pool)
     memory.setup()
@@ -54,9 +55,9 @@ async def receivefeedback(feedback:Feedbackrequest):
     config = {"configurable": {"thread_id": feedback.thread_id}}
     try:
         if feedback.status=="Yes":
-            graph.update_state(config, {"human_feedback": "Yes"}, as_node="hitl")
+            agent.update_state(config, {"human_feedback": "Yes"}, as_node="hitl")
         elif feedback.status=="No":
-            graph.update_state(
+            agent.update_state(
                 config,
                 {"human_feedback":"No",
                  # send the human feedback to the llm 
@@ -64,7 +65,7 @@ async def receivefeedback(feedback:Feedbackrequest):
                 }
                 ,as_node="hitl")
             
-        final_state = graph.invoke(None, config=config)
+        final_state = agent.invoke(None, config=config)
         return {
                 "status": "success",
                 "final_output": final_state.get("output", "No final output generated.")
