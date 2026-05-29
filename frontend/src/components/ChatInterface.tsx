@@ -166,9 +166,9 @@ export function ChatInterface({ messages, onSendMessage, isProcessing, isAwaitin
               className="hidden"
               ref={fileInputRef}
               onChange={handleFileChange}
-              accept=".pdf,.csv,image/*"
+              accept=".pdf,.csv,.txt,text/plain,image/*" 
             />
-            <button
+              <button
               type="button"
               onClick={() => fileInputRef.current?.click()}
               disabled={isProcessing || isAwaitingFeedback}
