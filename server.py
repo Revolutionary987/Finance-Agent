@@ -1,6 +1,6 @@
 import os
 import uuid
-from fastapi import FastAPI,HTTPException
+from fastapi import FastAPI,HTTPException,UploadFile,File,Form
 from pydantic import BaseModel
 from typing import Optional
 from langchain_core.messages import HumanMessage
@@ -39,16 +39,24 @@ app.add_middleware(
 class Restart(BaseModel):
     question:str
     thread_id:Optional[str]=None
+    file: Optional[UploadFile] = File(None)
+
 class Feedbackrequest(BaseModel):
     thread_id:str
     status:str
     feedback:Optional[str]=None
 
 @app.post("/app/call")
-async def restarting(restart:Restart):
-    thread_id=restart.thread_id or str(uuid.uuid4())
+async def restarting(question: str = Form(...), 
+    thread_id: Optional[str] = Form(None),
+    file: Optional[UploadFile] = File(None)):
+    # Form tells the FastApi to accept the data directly instead of expecting json format
+    thread_id=thread_id or str(uuid.uuid4())
     config={"configurable":{"thread_id":thread_id}}
-    initial_ques={"question":[HumanMessage(content=(restart.question))]}
+    if file:
+        print("Received file:"(file).filename)
+
+    initial_ques={"question":[HumanMessage(content=(question))]}
     memory=PostgresSaver(pool)
     state=graph.invoke(initial_ques,config=config)
     # same as .get function of dictionary
