@@ -19,13 +19,10 @@ from unstructured.chunking.title import chunk_by_title
 
 
 class Ingestion:
-    def __init__ (self, docs, doc_category: str, ticker: str = "N/A", year: int = 0):
+    def __init__ (self, docs):
         self.docs=docs
-        self.doc_category=doc_category
         self.chunks=[]
         self.elements=[]
-        self.ticker = ticker
-        self.year = year
         self.model=ChatGoogleGenerativeAI(model="gemini-2.5-flash",temperature=1)
     def partition(self):
         if not os.path.exists(self.docs):
