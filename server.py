@@ -38,10 +38,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-class Restart(BaseModel):
-    question:str
-    thread_id:Optional[str]=None
-    file: Optional[UploadFile] = File(None)
 
 class Feedbackrequest(BaseModel):
     thread_id:str
