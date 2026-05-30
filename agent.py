@@ -1,11 +1,12 @@
 import os
 from langgraph.graph import StateGraph, START, END
-from langchain_google_genai import ChatGoogleGenerativeAI
+
 from typing import TypedDict, Annotated, List, Literal
 from langgraph.graph.message import add_messages
 from langchain_core.messages import BaseMessage, HumanMessage
 from pydantic import BaseModel, Field
-from retriever import Retriever 
+from retriever import Retriever
+from langchain_groq import ChatGroq
 from langchain_core.prompts import ChatPromptTemplate
 from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg_pool import ConnectionPool
@@ -20,7 +21,7 @@ session_thread_id = str(uuid.uuid4())
 config = {"configurable": {"thread_id": session_thread_id}}
 
 
-llm = ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+llm = ChatGroq(model="llama3-70b-8192", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
 retriever = Retriever(vector_db=None, langchain_documents=[])
 
 

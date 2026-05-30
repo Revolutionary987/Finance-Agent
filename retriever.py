@@ -7,7 +7,7 @@ from langchain_classic.retrievers.document_compressors import CrossEncoderRerank
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from langchain_classic.retrievers.ensemble import EnsembleRetriever
 from langchain_classic.retrievers import SelfQueryRetriever
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
@@ -23,7 +23,8 @@ class Retriever:
     def __init__(self,vector_db,langchain_documents):
         if vector_db is not None:
             self.vector_retriever=vector_db.as_retriever(search_kwargs={"k":5})
-            self.llm=ChatGoogleGenerativeAI(model="gemini-2.5-flash",temperature=0)
+            self.llm=ChatGroq(model="llama3-70b-8192", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
+
             # Instead of a list of strings, use a list of dictionaries detailing the metadata
             metadata_field_info = [
         {

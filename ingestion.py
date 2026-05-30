@@ -8,13 +8,10 @@ from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from langchain_classic.retrievers.ensemble import EnsembleRetriever
 from langchain_classic.retrievers import SelfQueryRetriever
 from typing import List,Dict
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_groq import ChatGroq
 from langchain_core.documents import Document
 from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
-from langchain_community.retrievers import BM25Retriever
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-
 from unstructured.partition.auto import partition
 from unstructured.chunking.title import chunk_by_title
 
@@ -24,7 +21,7 @@ class Ingestion:
         self.docs=docs
         self.chunks=[]
         self.elements=[]
-        self.model=ChatGoogleGenerativeAI(model="gemini-2.5-flash",temperature=1)
+        self.model=ChatGroq(model="llama3-70b-8192", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
     def partition(self):
         if not os.path.exists(self.docs):
             raise FileNotFoundError("Couldn't find the file")
