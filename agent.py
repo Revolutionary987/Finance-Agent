@@ -101,7 +101,7 @@ def grade(state: RAGSubGraph):
     for i in range(len(docs)):
         result = grading_chain.invoke({
             "question": current_question, 
-            "docs": docs[i], 
+            "docs": docs[i].page_content,
         })
         if result.binary_score == "pass":
             filtered_docs.append(docs[i])
@@ -118,7 +118,7 @@ def gen_answer(state: RAGSubGraph):
     question = state["question"]
     current_question = question[-1].content 
     possible_ans = state["structured_out"]
-    context_string = "\n\n---\n\n".join(possible_ans)
+    context_string = "\n\n---\n\n".join([doc.page_content for doc in possible_ans])
     
     system_prompt = """You are Aegis, an elite financial auditor. 
     Your task is to generate answer to the user's question based on retrieved SEC 10-K document chunks.
@@ -158,7 +158,7 @@ class HallucinationGrading(BaseModel):
 def hal_check(state: RAGSubGraph):
     answer = state["answer"]
     possible_ans = state["structured_out"]
-    context_string = "\n\n---\n\n".join(possible_ans)
+    context_string = "\n\n---\n\n".join([doc.page_content for doc in possible_ans])
     
     system_prompt = """You are a strict auditor evaluating an AI-generated report. 
     Your only task is to determine whether the generated answer is entirely grounded in the provided source documents.
