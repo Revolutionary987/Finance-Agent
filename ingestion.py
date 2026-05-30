@@ -1,12 +1,10 @@
 import os
 import json
-from langchain.messages import SystemMessage,HumanMessage,AIMessage
+from dotenv import load_dotenv
+load_dotenv()
+
+from langchain.messages import HumanMessage
 from pydantic import BaseModel
-from langchain_classic.retrievers.contextual_compression import ContextualCompressionRetriever
-from langchain_classic.retrievers.document_compressors import CrossEncoderReranker
-from langchain_community.cross_encoders import HuggingFaceCrossEncoder
-from langchain_classic.retrievers.ensemble import EnsembleRetriever
-from langchain_classic.retrievers import SelfQueryRetriever
 from typing import List,Dict
 from langchain_groq import ChatGroq
 from langchain_core.documents import Document
@@ -14,7 +12,7 @@ from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
 from unstructured.partition.auto import partition
 from unstructured.chunking.title import chunk_by_title
-
+from langchain_postgres import PGVector
 
 class Ingestion:
     def __init__ (self, docs):
@@ -132,10 +130,23 @@ class Ingestion:
             model_kwargs=model_kwargs,
             encode_kwargs=encode_kwargs
         )
-        vector_db=Chroma.from_documents(
-            documents=langchain_documents,
-            embedding=embedding_model,
-            persist_directory=persist_directory,
-            collection_metadata={"hnsw:space": "cosine"}
-        )
-        return vector_db
+        RENDER_DB_URL = os.getenv("DATABASE_URL").replace("postgres://", "postgresql+psycopg://")
+        if langchain_documents:
+            # for new documents
+            vector_db = PGVector.from_documents(
+                documents=langchain_documents,
+                embedding=embedding_model,
+                collection_name="aegis_db",
+                connection=RENDER_DB_URL,
+                use_jsonb=True
+            )
+            return vector_db
+        else:
+            # for earlier documents
+            vector_db = PGVector(
+                embeddings=embedding_model,
+                collection_name="aegis_db",
+                connection=RENDER_DB_URL,
+                use_jsonb=True
+            )
+            return vector_db

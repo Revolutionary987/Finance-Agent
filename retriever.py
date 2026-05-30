@@ -1,6 +1,8 @@
 import os
 import json
 from dotenv import load_dotenv
+load_dotenv()
+
 from pydantic import BaseModel
 from langchain_classic.retrievers.contextual_compression import ContextualCompressionRetriever
 from langchain_classic.retrievers.document_compressors import CrossEncoderReranker
@@ -8,11 +10,7 @@ from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from langchain_classic.retrievers.ensemble import EnsembleRetriever
 from langchain_classic.retrievers import SelfQueryRetriever
 from langchain_groq import ChatGroq
-from langchain_core.documents import Document
-from langchain_chroma import Chroma
-from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_community.retrievers import BM25Retriever
-from ingestion import Ingestion
 
 class AttributeInfo(BaseModel):
     name: str
@@ -20,8 +18,9 @@ class AttributeInfo(BaseModel):
     type: str
 
 class Retriever:
-    def __init__(self,vector_db,langchain_documents):
+    async def __init__(self,vector_db,langchain_documents):
         if vector_db is not None:
+
             self.vector_retriever=vector_db.as_retriever(search_kwargs={"k":5})
             self.llm=ChatGroq(model="llama-3.3-70b-versatile", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
 
@@ -65,9 +64,9 @@ class Retriever:
         else:
             self.master_retriever = None 
             print("Retriever initialized without vector_db.")
-    def search(self, user_query):
+    async def search(self, user_query):
         if self.master_retriever is None:
             print("Error: Vector Database not connected.")
             return {"documents":[]}
-        return {"documents": self.master_retriever.invoke(user_query)}
+        return {"documents": await self.master_retriever.ainvoke(user_query)}
     

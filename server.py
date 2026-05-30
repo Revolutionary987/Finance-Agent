@@ -1,5 +1,8 @@
 import os
 import uuid
+from dotenv import load_dotenv
+load_dotenv()
+
 import shutil
 from fastapi import FastAPI,HTTPException,UploadFile,File,Form
 from pydantic import BaseModel
@@ -8,14 +11,13 @@ from langchain_core.messages import HumanMessage
 from psycopg_pool import ConnectionPool
 from langgraph.checkpoint.postgres import PostgresSaver
 from contextlib import asynccontextmanager
-from dotenv import load_dotenv
+
 from agent import graph
 from fastapi.middleware.cors import CORSMiddleware
 from ingestion import Ingestion
 import agent as agent_module
 from retriever import Retriever
 
-load_dotenv()
 DB_URL=os.getenv("DATABASE_URL")
 if not DB_URL:
     raise ValueError("Couldn't find the database")
@@ -106,7 +108,7 @@ async def receivefeedback(feedback:Feedbackrequest):
                 }
                 ,as_node="hitl")
             
-        final_state = agent.invoke(None, config=config)
+        final_state = await agent.ainvoke(None, config=config)
         return {
                 "status": "success",
                 "final_output": final_state.get("output", "No final output generated.")
