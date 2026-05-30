@@ -73,7 +73,7 @@ async def restarting(question: str = Form(...),
 
     initial_ques={"question":[HumanMessage(content=(question))]}
     memory=PostgresSaver(pool)
-    state=agent.invoke(initial_ques,config=config)
+    state=await agent.ainvoke(initial_ques,config=config)
     # same as .get function of dictionary
     messages_display=state.get("output","Drafting the answer")
     raw_docs = state.get("documents", [])
@@ -100,7 +100,7 @@ async def receivefeedback(feedback:Feedbackrequest):
         if feedback.status=="Yes":
             agent.update_state(config, {"human_feedback": "Yes"}, as_node="hitl")
         elif feedback.status=="No":
-            agent.update_state(
+            await agent.aupdate_state(
                 config,
                 {"human_feedback":"No",
                  # send the human feedback to the llm 

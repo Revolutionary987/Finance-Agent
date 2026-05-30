@@ -18,7 +18,7 @@ class AttributeInfo(BaseModel):
     type: str
 
 class Retriever:
-    async def __init__(self,vector_db,langchain_documents):
+    def __init__(self,vector_db,langchain_documents):
         if vector_db is not None:
 
             self.vector_retriever=vector_db.as_retriever(search_kwargs={"k":5})

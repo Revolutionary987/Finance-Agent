@@ -58,14 +58,14 @@ class RAGSubGraph(TypedDict):
 
 async def output(state: MainGraph):
     output_text = state["output"]
-    final = await structured_llm.ainvoke(output_text).output
+    final = (await structured_llm.ainvoke(output_text)).output
     return {"output": final}
 
 async def retriever_graph(state: RAGSubGraph):
     """The node calls the retriever function and retrieves the necessary documents"""
     query = state["question"]
     current_query = query[-1].content
-    search_results = retriever.search(current_query)
+    search_results = await retriever.search(current_query)
     
     return {"retrieved": search_results["documents"]}
 
