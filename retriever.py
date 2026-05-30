@@ -66,6 +66,7 @@ class Retriever:
             print("Retriever initialized without vector_db.")
     def search(self, user_query):
         if self.master_retriever is None:
-            return ["Error: Vector Database not connected."]
+            print("Error: Vector Database not connected.")
+            return {"documents":[]}
         return {"documents": self.master_retriever.invoke(user_query)}
     
