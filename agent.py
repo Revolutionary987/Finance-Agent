@@ -11,6 +11,7 @@ from langgraph.checkpoint.postgres import PostgresSaver
 from psycopg_pool import ConnectionPool
 from dotenv import load_dotenv
 import uuid
+from langchain_core.documents import Document
 
 load_dotenv()
 DB_URL = os.getenv("DATABASE_URL")
@@ -27,6 +28,7 @@ class MainGraph(TypedDict):
     question: Annotated[List[BaseMessage], add_messages]
     human_feedback:str
     output: str
+    documents: List[Document]
 
 class Display(BaseModel):
     output: Annotated[str, Field(description="Display a structured output for the model")]

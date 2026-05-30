@@ -75,89 +75,38 @@ export function AegisDashboard() {
   const handleSendMessage = async (text: string, file: File | null) => {
     if ((!text.trim() && !file) || isProcessing) return;
 
-    // Reset traces and telemetry for new execution
+    // 1. Reset traces
     setTraceNodes([]);
-    setTelemetry([]);
-    setMultimodalData(null);
-
-    const userMsg: Message = { 
-      id: Date.now().toString(), 
-      role: "user", 
-      content: file ? `[Attached File: ${file.name}] ${text}` : text 
-    };
-    setMessages((prev) => [...prev, userMsg]);
+    setMessages((prev) => [...prev, { id: Date.now().toString(), role: "user", content: text }]);
     setIsProcessing(true);
-    
-    // Simulate telemetry
-    addTelemetry(`[SSE] Received user input...`, "info");
-    if (file) addTelemetry(`[SSE] Processing attached file: ${file.name}`, "tool");
-    
-    // Simulate trace execution
-    const ingestId = "node_1_ingest";
-    updateTraceNode({ id: ingestId, name: "▶ Ingestion", status: "running", inputs: { prompt: text, file: file?.name } });
-    
-    setTimeout(() => {
-      updateTraceNode({ id: ingestId, name: "▶ Ingestion", status: "success", latency: "142ms", inputs: { prompt: text, file: file?.name }, outputs: { parsed: true, size: "14KB" } });
-      updateTraceNode({ id: "node_2_retrieve", name: "✔ Hybrid_Retriever", status: "running", inputs: { query: text } });
-      addTelemetry(`[SSE] Searching SEC database / RAG indices...`, "info");
-    }, 600);
-    
-    setTimeout(() => {
-      updateTraceNode({ 
-        id: "node_2_retrieve", 
-        name: "✔ Hybrid_Retriever", 
-        status: "success", 
-        latency: "840ms",
-        inputs: { query: text },
-        outputs: { matches: 4 },
-        retrievedDocs: [
-          { chunk: "The Company recognized $128.9M in Subscription Services, a significant deviation from prior quarters...", similarity: 0.924, page: 42 },
-          { chunk: "Revenue recognition policies shifted in Q2 to account for bundled software licenses...", similarity: 0.881, page: 43 }
-        ]
-      });
-      updateTraceNode({ id: "node_3_eval", name: "⚠ Bear_Analyst_Review", status: "running", inputs: { documents: 2 } });
-      addTelemetry(`[SSE] Bull/Bear Debate in progress...`, "tool");
-    }, 1500);
 
     try {
+      // 2. Fetch real data from Hugging Face
       const res = await realFetchToFastAPI(text, file);
       
-      const aiMsg: Message = {
+      // 3. Update the Trace Inspector with REAL data
+      updateTraceNode({ 
+        id: "node_retrieve", 
+        name: "✔ Vector Search", 
+        status: "success", 
+        // Map your real backend documents into the Trace UI format here
+        retrievedDocs: res.retrieved_context.map((doc: any, index: number) => ({
+             chunk: doc.page_content,
+             similarity: doc.metadata?.score || 0.99, // If your DB returns scores
+             page: doc.metadata?.page || index + 1
+        }))
+      });
+
+      // 4. Update the chat window
+      setMessages((prev) => [...prev, {
         id: Date.now().toString(),
         role: "ai",
         content: "Processing complete.",
         display: res.message_display,
-      };
-      
-      if (res.requires_approval) {
-        updateTraceNode({ 
-          id: "node_3_eval", 
-          name: "⚠ Bear_Analyst_Review", 
-          status: "success", 
-          latency: "1.2s",
-          routingRationale: "Reasoning: Bear Analyst flagged a 14% variance discrepancy in Subscription Services -> Routing to HITL Interruption.",
-          outputs: { flag: "anomaly_detected", value: "$12.4M" }
-        });
-        updateTraceNode({ id: "node_4_hitl", name: "⏸ HITL_Interrupt", status: "warning", latency: "Pending", inputs: { await_approval: true } });
-        addTelemetry(`[SSE] Halt execution: Awaiting human-in-the-loop approval...`, "warning");
-        setIsAwaitingFeedback(true);
-      } else {
-        updateTraceNode({ 
-          id: "node_3_eval", 
-          name: "⚠ Bear_Analyst_Review", 
-          status: "success", 
-          latency: "940ms",
-          routingRationale: "Reasoning: No variance detected -> Routing to Generation node.",
-          outputs: { flag: "none" }
-        });
-        updateTraceNode({ id: "node_5_gen", name: "▶ Final_Output_Generator", status: "success", latency: "450ms", outputs: { generated: true } });
-        addTelemetry(`[SSE] Generation complete.`, "success");
-        setMessages((prev) => [...prev, aiMsg]);
-      }
-      
+      }]);
+
     } catch (error) {
-      updateTraceNode({ id: "node_error", name: "✖ Error_Handler", status: "error", latency: "0ms" });
-      addTelemetry(`[SSE] Error communicating with backend.`, "error");
+      console.error(error);
     } finally {
       setIsProcessing(false);
     }

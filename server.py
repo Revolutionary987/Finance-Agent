@@ -71,10 +71,21 @@ async def restarting(question: str = Form(...),
     state=agent.invoke(initial_ques,config=config)
     # same as .get function of dictionary
     messages_display=state.get("output","Drafting the answer")
+    raw_docs = state.get("documents", [])
+    real_documents = []
+    for doc in raw_docs:
+        if hasattr(doc, "page_content"):
+            real_documents.append({
+                "page_content": doc.page_content,
+                "metadata": doc.metadata
+            })
+        else:
+            real_documents.append({"page_content": str(doc)})
     return{
         "status":"awaiting response",
         "thread_id":thread_id,
-        "message_display":messages_display
+        "message_display":messages_display,
+        "retrieved_context":real_documents
     }
 
 @app.post("/app/feedback")
