@@ -57,7 +57,12 @@ def retriever_graph(state: RAGSubGraph):
     """The node calls the retriever function and retrieves the necessary documents"""
     query = state["question"]
     current_query = query[-1].content
-    documents = retriever.search.invoke(current_query)
+    search_results = retriever.search(current_query)
+    if isinstance(search_results, dict) and "documents" in search_results:
+        documents = search_results["documents"]
+    else:
+        documents = search_results
+        
     return {"retrieved": documents}
 
 class retrieved_docs(BaseModel):
@@ -284,7 +289,8 @@ def rewrite_query(state: RAGSubGraph):
 
 def to_parent(state: RAGSubGraph):
     final_ans = state["answer"]
-    return {"output": final_ans}
+    docs = state.get("structured_out", [])
+    return {"output": final_ans, "documents": docs}
 
 def hitl(state:MainGraph):
     return state
