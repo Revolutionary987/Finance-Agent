@@ -115,11 +115,11 @@ async def grade(state: RAGSubGraph):
             
     return {"structured_out": filtered_docs}
 
-async def examiner(state: RAGSubGraph) -> Literal["Generate answer", "Rewrite"]:
+async def examiner(state: RAGSubGraph) -> Literal["Rewrite","Generate answer"]:
     if len(state["structured_out"]) > 0:
-        return "Generate answer"
-    else:
         return "Rewrite"
+    else:
+        return "Generate answer"
     
 async def gen_answer(state: RAGSubGraph):
     question = state["question"]
