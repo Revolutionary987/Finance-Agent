@@ -58,12 +58,8 @@ def retriever_graph(state: RAGSubGraph):
     query = state["question"]
     current_query = query[-1].content
     search_results = retriever.search(current_query)
-    if isinstance(search_results, dict) and "documents" in search_results:
-        documents = search_results["documents"]
-    else:
-        documents = search_results
-        
-    return {"retrieved": documents}
+    
+    return {"retrieved": search_results["documents"]}
 
 class retrieved_docs(BaseModel):
     binary_score: Annotated[str, Field(description="Return 'pass' or 'fail'")]
