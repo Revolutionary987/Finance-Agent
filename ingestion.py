@@ -114,9 +114,6 @@ class Ingestion:
             docs=Document(
                 page_content=summary_gen,
                 metadata={
-                    "doc_category": self.doc_category,
-                    "ticker": self.ticker,
-                    "year": self.year,
                     "original_data":json.dumps(
                         {
                             'raw_text':data['text'],
