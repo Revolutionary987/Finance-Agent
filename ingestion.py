@@ -21,7 +21,7 @@ class Ingestion:
         self.docs=docs
         self.chunks=[]
         self.elements=[]
-        self.model=ChatGroq(model="llama3-70b-8192", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
+        self.model=ChatGroq(model="llama-3.3-70b-versatile", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
     def partition(self):
         if not os.path.exists(self.docs):
             raise FileNotFoundError("Couldn't find the file")

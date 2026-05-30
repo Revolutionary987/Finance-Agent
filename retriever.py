@@ -23,7 +23,7 @@ class Retriever:
     def __init__(self,vector_db,langchain_documents):
         if vector_db is not None:
             self.vector_retriever=vector_db.as_retriever(search_kwargs={"k":5})
-            self.llm=ChatGroq(model="llama3-70b-8192", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
+            self.llm=ChatGroq(model="llama-3.3-70b-versatile", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
 
             # Instead of a list of strings, use a list of dictionaries detailing the metadata
             metadata_field_info = [

@@ -21,7 +21,7 @@ session_thread_id = str(uuid.uuid4())
 config = {"configurable": {"thread_id": session_thread_id}}
 
 
-llm = ChatGroq(model="llama3-70b-8192", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
+llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
 retriever = Retriever(vector_db=None, langchain_documents=[])
 
 
