@@ -203,7 +203,8 @@ export function AegisDashboard() {
     return {
       thread_id: data.thread_id,
       message_display: data.message_display,
-      requires_approval: requires_approval
+      requires_approval: requires_approval,
+      retrieved_context: data.retrieved_context || []
     };
   };
   return (
