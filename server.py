@@ -12,6 +12,8 @@ from dotenv import load_dotenv
 from agent import graph
 from fastapi.middleware.cors import CORSMiddleware
 from ingestion import Ingestion
+import agent as agent_module
+from retriever import Retriever
 
 load_dotenv()
 DB_URL=os.getenv("DATABASE_URL")
@@ -64,6 +66,7 @@ async def restarting(question: str = Form(...),
         ingestor.chunkdocs()
         final_docs=ingestor.document()
         chroma_db=ingestor.embedding(final_docs)
+        agent_module.retriever = Retriever(vector_db=chroma_db, langchain_documents=final_docs)
         question = f"{question}\n\n[System: The user attached a file. It has been ingested into the Chroma Vector Database. Use your Retrieval tools to search it.]"
 
     initial_ques={"question":[HumanMessage(content=(question))]}
