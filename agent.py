@@ -83,7 +83,17 @@ async def grade(state: RAGSubGraph):
     system_prompt = """You are Aegis, an elite financial auditor. 
     Your task is to evaluate retrieved SEC 10-K document chunks.
     Determine if the document contains facts, tables, or metrics relevant to the user's question.
-    If it is relevant, grade it 'pass'. If it is completely irrelevant, grade it 'fail'."""
+    If it is relevant, grade it 'pass'. If it is completely irrelevant, grade it 'fail'.
+    
+    CRITICAL INSTRUCTION: You are a backend data processor. You MUST output strictly and ONLY valid JSON. 
+    Do NOT output any conversational text, explanations, or preamble. 
+    Do NOT wrap the output in markdown blocks (no ```json). 
+    
+    {format_instructions}
+    
+    EXAMPLE OUTPUT:
+    {{"binary_score": "fail"}}
+    """
 
     human_prompt = """
     Here is the user's question:
@@ -175,7 +185,16 @@ async def hal_check(state: RAGSubGraph):
     system_prompt = """You are a strict auditor evaluating an AI-generated report. 
     Your only task is to determine whether the generated answer is entirely grounded in the provided source documents.
     If the answer contains ANY numbers, facts, or claims that are not explicitly stated in the source documents, it is a hallucination.
-    If it is a hallucination, grade it 'Hallucination'. If it is perfectly grounded, grade it 'No Hallucination'."""
+    If it is a hallucination, grade it 'Hallucination'. If it is perfectly grounded, grade it 'No Hallucination'.
+    
+    CRITICAL INSTRUCTION: You are a backend data processor. You MUST output strictly and ONLY valid JSON. 
+    Do NOT output any conversational text, preamble, or markdown blocks.
+    
+    {format_instructions}
+    
+    EXAMPLE OUTPUT:
+    {{"reasoning": "The revenue numbers match the text.", "hallucination": "No Hallucination"}}
+    """
 
     human_prompt = """
     Here are the source documents retrieved from the SEC 10-K:
@@ -226,6 +245,15 @@ async def answer_check(state: RAGSubGraph):
     You are Aegis, an expert finance auditor
     You task is to evaluate the generated answer strictly based on the question 
     return 'sufficient' if it exactly answers the question else 'not sufficient'
+    
+    CRITICAL INSTRUCTION: You are a backend data processor. You MUST output strictly and ONLY valid JSON. 
+    Do NOT output any conversational text, preamble, or markdown blocks.
+    
+    {format_instructions}
+    
+    EXAMPLE OUTPUT:
+    {{"scoring": "sufficient"}}
+
     """
     
     human_prompt = """
