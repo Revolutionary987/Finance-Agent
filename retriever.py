@@ -37,26 +37,34 @@ class Retriever:
 
             # Instead of a list of strings, use a list of dictionaries detailing the metadata
             metadata_field_info = [
-        {
-            "name": "doc_category",
-            "description": "The category of the document, such as 'finance' for SEC filings or 'general_doc'.",
-            "type": "string",
-        },
-        {
-            "name": "ticker",
-            "description": "The stock ticker symbol of the company.",
-            "type": "string",
-        },
-        {
-            "name": "year",
-            "description": "The year the document was filed.",
-            "type": "integer",
-        }
-    ]
+                {
+                    "name": "doc_category",
+                    "description": "Category of the document (e.g., 'finance'). STRICT RULE: Do NOT use 'contain'. Use 'eq' or 'ilike'.",
+                    "type": "string",
+                },
+                {
+                    "name": "ticker",
+                    "description": "Stock ticker symbol. STRICT RULE: Do NOT use 'contain'. Use 'eq' or 'ilike'.",
+                    "type": "string",
+                },
+                {
+                    "name": "year",
+                    "description": "The year the document was filed.",
+                    "type": "integer",
+                }
+            ]
+            strict_document_prompt = (
+                "Detailed financial documents and SEC filings. "
+                "CRITICAL INSTRUCTION: When creating metadata filters for string fields, "
+                "you are STRICTLY FORBIDDEN from using the 'contain' operator. "
+                "You MUST use the 'ilike' or 'eq' operator instead. "
+                "Failure to follow this rule will crash the SQL database."
+            )
 
             self.vector_retriever = SelfQueryRetriever.from_llm(
                 llm=self.llm,
                 vectorstore=vector_db,
+                document_contents=strict_document_prompt,
                 document_contents="Detailed financial documents and SEC filings.",
                 metadata_field_info=metadata_field_info,
                 allowed_comparators=pgvector_comparators,
