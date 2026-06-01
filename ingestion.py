@@ -19,7 +19,7 @@ class Ingestion:
         self.docs=docs
         self.chunks=[]
         self.elements=[]
-        self.model=ChatGroq(model="llama-3.3-70b-versatile", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
+        self.model=ChatGroq(model="llama-3.2-90b-vision-preview", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
     def partition(self):
         if not os.path.exists(self.docs):
             raise FileNotFoundError("Couldn't find the file")
@@ -121,7 +121,7 @@ class Ingestion:
             langchain_documents.append(docs)
         return langchain_documents
     
-    def embedding(self,langchain_documents,persist_directory="ddb/chroma_db"):
+    async def embedding(self,langchain_documents,persist_directory="ddb/chroma_db"):
         model_name="BAAI/bge-m3"
         model_kwargs={"device":"cpu"}
         encode_kwargs={"normalize_embeddings":True}
@@ -131,24 +131,16 @@ class Ingestion:
             encode_kwargs=encode_kwargs
         )
         RENDER_DB_URL = os.getenv("DATABASE_URL").replace("postgres://", "postgresql+psycopg://")
-        if langchain_documents:
-            # for new documents
-            vector_db = PGVector.from_documents(
-                documents=langchain_documents,
-                embedding=embedding_model,
-                collection_name="aegis_db",
-                connection=RENDER_DB_URL,
-                use_jsonb=True,
-                use_async=True,
-            )
-            return vector_db
-        else:
-            # for earlier documents
-            vector_db = PGVector(
+        vector_db = PGVector(
                 embeddings=embedding_model,
                 collection_name="aegis_db",
                 connection=RENDER_DB_URL,
                 use_jsonb=True,
-                use_async=True,
-            )
+                use_async=True, # Configures it for async use in LangGraph
+        )
+
+            # 2. Add documents asynchronously if they exist
+        if langchain_documents:
+            await vector_db.aadd_documents(langchain_documents)
+                
             return vector_db

@@ -68,7 +68,7 @@ async def restarting(question: str = Form(...),
         ingestor.partition()
         ingestor.chunkdocs()
         final_docs=ingestor.document()
-        chroma_db=ingestor.embedding(final_docs)
+        chroma_db=await ingestor.embedding(final_docs)
         agent_module.retriever = Retriever(vector_db=chroma_db, langchain_documents=final_docs)
         question = f"{question}\n\n[System: The user attached a file. It has been ingested into the Chroma Vector Database. Use your Retrieval tools to search it.]"
 
