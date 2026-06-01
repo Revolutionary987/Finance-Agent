@@ -58,6 +58,7 @@ class RAGSubGraph(TypedDict):
     is_sufficient: str
     final_output: str
     rewritten:int 
+    generation_attempts: int
 
 async def output(state: MainGraph):
     output_text = state["output"]
@@ -140,6 +141,7 @@ async def gen_answer(state: RAGSubGraph):
     current_question = question[-1].content 
     possible_ans = state["structured_out"]
     context_string = "\n\n---\n\n".join([doc.page_content for doc in possible_ans])
+    attempts = state.get("generation_attempts", 0)
     
     system_prompt = """You are Aegis, an elite financial auditor. 
     Your task is to generate answer to the user's question based on retrieved SEC 10-K document chunks.
@@ -166,10 +168,10 @@ async def gen_answer(state: RAGSubGraph):
     
     result = await generating_ans.ainvoke({
         "possible_ans": context_string,
-        "question": current_question
+        "question": current_question,
     })
     
-    return {"answer": result.content}
+    return {"answer": result.content,"generation_attempts": attempts + 1}
 
 class HallucinationGrading(BaseModel):
     """Binary score for hallucination check on generated answers."""
@@ -227,6 +229,9 @@ async def hal_check(state: RAGSubGraph):
 
 async def check_hallucination(state: RAGSubGraph) -> Literal["Generate answer", "Answer check"]:
     if state["hallucination"] == "Hallucination":
+        if state.get("generation_attempts", 0) >= 3:
+            return "Rewrite"
+            
         return "Generate answer"
     else:
         return "Answer check"
