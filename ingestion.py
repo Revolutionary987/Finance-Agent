@@ -19,7 +19,7 @@ class Ingestion:
         self.docs=docs
         self.chunks=[]
         self.elements=[]
-        self.model=ChatGroq(model="llama-3.2-90b-vision-preview", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
+        self.model=ChatGroq(model="llama-3.2-11b-vision-preview", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
     def partition(self):
         if not os.path.exists(self.docs):
             raise FileNotFoundError("Couldn't find the file")
@@ -130,7 +130,14 @@ class Ingestion:
             model_kwargs=model_kwargs,
             encode_kwargs=encode_kwargs
         )
-        RENDER_DB_URL = os.getenv("DATABASE_URL").replace("postgres://", "postgresql+psycopg://")
+        raw_url = os.getenv("DATABASE_URL")
+        RENDER_DB_URL = raw_url.replace("postgres://", "postgresql+psycopg://")
+        if raw_url.startswith("postgresql://"):
+            RENDER_DB_URL = raw_url.replace("postgresql://", "postgresql+psycopg://")
+        elif raw_url.startswith("postgres://"):
+            RENDER_DB_URL = raw_url.replace("postgres://", "postgresql+psycopg://")
+        else:
+            RENDER_DB_URL = raw_url
         vector_db = PGVector(
                 embeddings=embedding_model,
                 collection_name="aegis_db",
