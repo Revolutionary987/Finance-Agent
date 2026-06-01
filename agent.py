@@ -88,6 +88,7 @@ async def retriever_graph(state: RAGSubGraph):
     query = state["question"]
     current_query = query[-1].content
     search_results = await retriever.search(current_query)
+    print(f"\n[DIAGNOSTIC] Retriever found {len(search_results['documents'])} documents in the database.")
     
     return {"retrieved": search_results["documents"]}
 
@@ -143,6 +144,7 @@ async def grade(state: RAGSubGraph):
             "docs": docs[i].page_content,
             "format_instructions": docs_parser.get_format_instructions()
         })
+        print(f"[DIAGNOSTIC] Grader evaluated chunk {i+1}/{len(docs)}: {result.binary_score.upper()}")
         if result.binary_score == "pass":
             filtered_docs.append(docs[i])
             
