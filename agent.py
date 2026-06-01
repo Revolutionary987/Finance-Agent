@@ -17,7 +17,7 @@ from langchain_google_genai import ChatGoogleGenerativeAI
 import uuid
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
-
+from langchain_core.output_parsers import PydanticOutputParser
 
 session_thread_id = str(uuid.uuid4())
 config = {"configurable": {"thread_id": session_thread_id}}
@@ -79,7 +79,7 @@ async def grade(state: RAGSubGraph):
     question = state["question"]
     current_question = question[-1].content
     docs = state["retrieved"]
-    
+    docs_parser = PydanticOutputParser(pydantic_object=retrieved_docs)
     system_prompt = """You are Aegis, an elite financial auditor. 
     Your task is to evaluate retrieved SEC 10-K document chunks.
     Determine if the document contains facts, tables, or metrics relevant to the user's question.
@@ -104,14 +104,15 @@ async def grade(state: RAGSubGraph):
         ("human", human_prompt)
     ])
 
-    structured_grader = simple_task_llm.with_structured_output(retrieved_docs)
-    grading_chain = grade_prompt | structured_grader
+    # structured_grader = simple_task_llm.with_structured_output(retrieved_docs)
+    grading_chain = grade_prompt | simple_task_llm | docs_parser
     
     filtered_docs = []
     for i in range(len(docs)):
         result = await grading_chain.ainvoke({
             "question": current_question, 
             "docs": docs[i].page_content,
+            "format_instructions": docs_parser.get_format_instructions()
         })
         if result.binary_score == "pass":
             filtered_docs.append(docs[i])
@@ -169,7 +170,8 @@ async def hal_check(state: RAGSubGraph):
     answer = state["answer"]
     possible_ans = state["structured_out"]
     context_string = "\n\n---\n\n".join([doc.page_content for doc in possible_ans])
-    
+    hal_parser = PydanticOutputParser(pydantic_object=HallucinationGrading)
+
     system_prompt = """You are a strict auditor evaluating an AI-generated report. 
     Your only task is to determine whether the generated answer is entirely grounded in the provided source documents.
     If the answer contains ANY numbers, facts, or claims that are not explicitly stated in the source documents, it is a hallucination.
@@ -194,12 +196,12 @@ async def hal_check(state: RAGSubGraph):
         ("human", human_prompt)
     ])
     
-    structured_output = simple_task_llm.with_structured_output(HallucinationGrading)
-    gen_cycle = generation | structured_output
+    gen_cycle = generation | simple_task_llm | hal_parser
     
     result = await gen_cycle.ainvoke({
         "documents": context_string,
-        "answer": answer
+        "answer": answer,
+        "format_instructions": hal_parser.get_format_instructions()
     })
     
     return {"hallucination": result.hallucination}
@@ -218,7 +220,8 @@ async def answer_check(state: RAGSubGraph):
     answer = state["answer"]
     question = state["question"]
     current_question = question[-1].content
-    
+    ans_parser = PydanticOutputParser(pydantic_object=cond_answer)
+
     system_prompt = """
     You are Aegis, an expert finance auditor
     You task is to evaluate the generated answer strictly based on the question 
@@ -241,12 +244,13 @@ async def answer_check(state: RAGSubGraph):
         ("human", human_prompt)
     ])
     
-    structured_out = simple_task_llm.with_structured_output(cond_answer)
-    gen_out = prompt | structured_out
+    # structured_out = simple_task_llm.with_structured_output(cond_answer)
+    gen_out = prompt | simple_task_llm | ans_parser
     
     result = await gen_out.ainvoke({
         "answer": answer,
         "question": current_question,
+        "format_instructions": ans_parser.get_format_instructions()
     })
     return {"is_sufficient": result.scoring}
 
