@@ -11,12 +11,23 @@ from langchain_classic.retrievers.ensemble import EnsembleRetriever
 from langchain_classic.retrievers import SelfQueryRetriever
 from langchain_groq import ChatGroq
 from langchain_community.retrievers import BM25Retriever
+from langchain_core.structured_query import Comparator
 
 class AttributeInfo(BaseModel):
     name: str
     description: str
     type: str
-
+pgvector_comparators = [
+    Comparator.EQ,
+    Comparator.NE,
+    Comparator.GT,
+    Comparator.GTE,
+    Comparator.LT,
+    Comparator.LTE,
+    Comparator.IN,
+    Comparator.NIN,
+    Comparator.LIKE # This forces the LLM to use $like instead of $contain
+]
 class Retriever:
     def __init__(self,vector_db,langchain_documents):
         if vector_db is not None:
@@ -48,6 +59,7 @@ class Retriever:
                 vectorstore=vector_db,
                 document_contents="Detailed financial documents and SEC filings.",
                 metadata_field_info=metadata_field_info,
+                allowed_comparators=pgvector_comparators,
     )
             self.bm25_retriever=BM25Retriever.from_documents(langchain_documents)
             self.bm25_retriever.k = 3
