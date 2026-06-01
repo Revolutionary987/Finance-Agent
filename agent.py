@@ -49,6 +49,7 @@ vector_store = PGVector(
     embeddings=embedding_model,
     collection_name="aegis_sec_filings",
     connection=DB_URL,
+    async_mode=True
 )
 retriever = Retriever(vector_db=vector_store, langchain_documents=[])
 
