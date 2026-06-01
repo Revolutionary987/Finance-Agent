@@ -138,7 +138,8 @@ class Ingestion:
                 embedding=embedding_model,
                 collection_name="aegis_db",
                 connection=RENDER_DB_URL,
-                use_jsonb=True
+                use_jsonb=True,
+                use_async=True,
             )
             return vector_db
         else:
@@ -147,6 +148,7 @@ class Ingestion:
                 embeddings=embedding_model,
                 collection_name="aegis_db",
                 connection=RENDER_DB_URL,
-                use_jsonb=True
+                use_jsonb=True,
+                use_async=True,
             )
             return vector_db
