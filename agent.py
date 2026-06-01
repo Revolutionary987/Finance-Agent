@@ -28,7 +28,7 @@ simple_reserve1=ChatOpenAI(model="llama3.1-8b", api_key=os.getenv("CEREBRAS_API_
 simple_reserve2= ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
 simple_task_llm = simple_reserve1.with_fallbacks([simple_reserve2])
 primary_llm = primary_llm.with_fallbacks([reserve_primary])
-beast = ChatOpenAI(base_url="https://api.sambanova.ai/v1",api_key=os.getenv("SAMBANOVA_API_KEY"),model="Meta-Llama-3.1-405B-Instruct", temperature=0)
+beast = ChatOpenAI(base_url="https://api.sambanova.ai/v1",api_key=os.getenv("SAMBANOVA_API_KEY"),model="Meta-Llama-3.3-70B-Instruct", temperature=0)
 
 retriever = Retriever(vector_db=None, langchain_documents=[])
 
