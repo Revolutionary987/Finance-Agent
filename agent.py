@@ -137,7 +137,7 @@ async def grade(state: RAGSubGraph):
     ])
 
     # structured_grader = simple_task_llm.with_structured_output(retrieved_docs)
-    grading_chain = grade_prompt | simple_task_llm | docs_parser
+    grading_chain = grade_prompt | primary_llm | docs_parser
     
     filtered_docs = []
     for i in range(len(docs)):
