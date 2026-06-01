@@ -69,17 +69,22 @@ class Retriever:
                 metadata_field_info=metadata_field_info,
                 allowed_comparators=pgvector_comparators,
     )
-            self.bm25_retriever=BM25Retriever.from_documents(langchain_documents)
-            self.bm25_retriever.k = 3
-            self.hybrid_retriever=EnsembleRetriever(
-                retrievers=[self.vector_retriever,self.bm25_retriever],
-                weights=[0.7,0.3]
-            )
+            if langchain_documents and len(langchain_documents) > 0:
+                self.bm25_retriever = BM25Retriever.from_documents(langchain_documents)
+                self.bm25_retriever.k = 3
+                
+                self.base_retriever = EnsembleRetriever(
+                    retrievers=[self.vector_retriever, self.bm25_retriever],
+                    weights=[0.7, 0.3]
+                )
+            else:
+                self.base_retriever = self.vector_retriever
+            
             cross_encoder = HuggingFaceCrossEncoder(model_name="BAAI/bge-reranker-base")
             reranker = CrossEncoderReranker(model=cross_encoder, top_n=3)
             self.master_retriever = ContextualCompressionRetriever(
                 base_compressor=reranker,
-                base_retriever=self.hybrid_retriever
+                base_retriever=self.base_retriever
             )
         else:
             self.master_retriever = None 
