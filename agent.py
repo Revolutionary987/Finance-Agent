@@ -30,7 +30,7 @@ reserve_primary=ChatOpenAI(model="llama-3.3-70b", api_key=os.getenv("CEREBRAS_AP
 # simple_task_llm = simple_reserve2.with_fallbacks([simple_reserve1])
 primary_llm = primary_llm.with_fallbacks([reserve_primary])
 beast = ChatOpenAI(base_url="https://api.sambanova.ai/v1",api_key=os.getenv("SAMBANOVA_API_KEY"),model="Meta-Llama-3.3-70B-Instruct", temperature=0)
-slm_endpoint = HuggingFaceEndpoint(repo_id="meta-llama/Llama-3.2-3B-Instruct",task="text-generation",max_new_tokens=150,huggingfacehub_api_token=os.getenv("HF_TOKEN"))
+slm_endpoint = HuggingFaceEndpoint(repo_id="meta-llama/Llama-3.1-8B-Instruct",task="text-generation",max_new_tokens=150,huggingfacehub_api_token=os.getenv("HF_TOKEN"))
 simple_task_llm = ChatHuggingFace(llm=slm_endpoint)
 
 retriever = Retriever(vector_db=None, langchain_documents=[])
