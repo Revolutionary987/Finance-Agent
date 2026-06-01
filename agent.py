@@ -44,7 +44,7 @@ class MainGraph(TypedDict):
 class Display(BaseModel):
     output: Annotated[str, Field(description="Display a structured output for the model")]
 
-structured_llm = simple_task_llm.with_structured_output(Display)
+structured_llm = primary_llm.with_structured_output(Display)
 
 class RAGSubGraph(TypedDict):
     question: Annotated[List[BaseMessage], add_messages]
