@@ -8,8 +8,9 @@ from fastapi import FastAPI,HTTPException,UploadFile,File,Form
 from pydantic import BaseModel
 from typing import Optional
 from langchain_core.messages import HumanMessage
-from psycopg_pool import ConnectionPool
-from langgraph.checkpoint.postgres import PostgresSaver
+from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+from psycopg_pool import AsyncConnectionPool
+from psycopg.rows import dict_row
 from contextlib import asynccontextmanager
 
 from agent import graph
@@ -21,18 +22,18 @@ from retriever import Retriever
 DB_URL=os.getenv("DATABASE_URL")
 if not DB_URL:
     raise ValueError("Couldn't find the database")
-pool = ConnectionPool(conninfo=DB_URL, max_size=5,kwargs={"autocommit": True}, open=False)
+pool = AsyncConnectionPool(conninfo=DB_URL, max_size=20,kwargs={"autocommit": True, "row_factory": dict_row}, open=False)
 agent=None
 @asynccontextmanager
 async def lifespan(FastAPI):
     global agent
-    pool.open()
-    memory = PostgresSaver(pool)
-    memory.setup()
+    await pool.open()
+    memory = AsyncPostgresSaver(pool)
+    await memory.setup()
     agent = graph.compile(checkpointer=memory, interrupt_before=["hitl"])
     # yield is like return but it won't end the function it freezes it then continues when it is called
     yield
-    pool.close()
+    await pool.close()
 app=FastAPI(lifespan=lifespan)
 
 app.add_middleware(
@@ -72,7 +73,7 @@ async def restarting(question: str = Form(...),
         question = f"{question}\n\n[System: The user attached a file. It has been ingested into the Chroma Vector Database. Use your Retrieval tools to search it.]"
 
     initial_ques={"question":[HumanMessage(content=(question))]}
-    memory=PostgresSaver(pool)
+    memory=AsyncPostgresSaver(pool)
     state=await agent.ainvoke(initial_ques,config=config)
     # same as .get function of dictionary
     messages_display=state.get("output","Drafting the answer")
