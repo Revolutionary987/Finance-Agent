@@ -19,10 +19,12 @@ from ingestion import Ingestion
 import agent as agent_module
 from retriever import Retriever
 
-DB_URL=os.getenv("DATABASE_URL")
+DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
     raise ValueError("Couldn't find the database")
-pool = AsyncConnectionPool(conninfo=DB_URL, max_size=20,kwargs={"autocommit": True, "row_factory": dict_row}, open=False)
+
+POOL_URL = DB_URL.replace("+psycopg", "")
+pool = AsyncConnectionPool(conninfo=POOL_URL, max_size=20,kwargs={"autocommit": True, "row_factory": dict_row}, open=False)
 agent=None
 @asynccontextmanager
 async def lifespan(FastAPI):
