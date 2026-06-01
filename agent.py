@@ -2,6 +2,7 @@ import os
 from dotenv import load_dotenv
 load_dotenv(dotenv_path=".env",override=True)
 
+from langchain_postgres import PGVector
 from langgraph.graph import StateGraph, START, END
 from typing import TypedDict, Annotated, List, Literal
 from langgraph.graph.message import add_messages
@@ -18,6 +19,7 @@ import uuid
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
 from langchain_core.output_parsers import PydanticOutputParser
+from langchain_huggingface import HuggingFaceEmbeddings
 
 session_thread_id = str(uuid.uuid4())
 config = {"configurable": {"thread_id": session_thread_id}}
@@ -33,7 +35,22 @@ beast = ChatOpenAI(base_url="https://api.sambanova.ai/v1",api_key=os.getenv("SAM
 slm_endpoint = HuggingFaceEndpoint(repo_id="meta-llama/Llama-3.1-8B-Instruct",task="text-generation",max_new_tokens=150,huggingfacehub_api_token=os.getenv("HF_TOKEN"))
 simple_task_llm = ChatHuggingFace(llm=slm_endpoint)
 
-retriever = Retriever(vector_db=None, langchain_documents=[])
+DB_URL = os.getenv("DATABASE_URL")
+model_name="BAAI/bge-m3"
+model_kwargs={"device":"cpu"}
+encode_kwargs={"normalize_embeddings":True}
+embedding_model=HuggingFaceEmbeddings(
+        model_name=model_name,
+        model_kwargs=model_kwargs,
+        encode_kwargs=encode_kwargs,
+)
+
+vector_store = PGVector(
+    embeddings=embedding_model,
+    collection_name="aegis_sec_filings",
+    connection=DB_URL,
+)
+retriever = Retriever(vector_db=vector_store, langchain_documents=[])
 
 class MainGraph(TypedDict):
     question: Annotated[List[BaseMessage], add_messages]

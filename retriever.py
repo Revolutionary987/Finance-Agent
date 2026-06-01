@@ -17,6 +17,7 @@ class AttributeInfo(BaseModel):
     name: str
     description: str
     type: str
+
 pgvector_comparators = [
     Comparator.EQ,
     Comparator.NE,
@@ -26,7 +27,7 @@ pgvector_comparators = [
     Comparator.LTE,
     Comparator.IN,
     Comparator.NIN,
-    Comparator.LIKE # This forces the LLM to use $like instead of $contain
+    Comparator.LIKE 
 ]
 class Retriever:
     def __init__(self,vector_db,langchain_documents):

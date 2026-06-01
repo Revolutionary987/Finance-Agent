@@ -121,7 +121,7 @@ class Ingestion:
             langchain_documents.append(docs)
         return langchain_documents
     
-    async def embedding(self,langchain_documents,persist_directory="ddb/chroma_db"):
+    async def embedding(self,langchain_documents):
         model_name="BAAI/bge-m3"
         model_kwargs={"device":"cpu"}
         encode_kwargs={"normalize_embeddings":True}
@@ -143,10 +143,8 @@ class Ingestion:
                 collection_name="aegis_db",
                 connection=RENDER_DB_URL,
                 use_jsonb=True,
-                async_mode=True, # Configures it for async use in LangGraph
+                async_mode=True, 
         )
-
-            # 2. Add documents asynchronously if they exist
         if langchain_documents:
             await vector_db.aadd_documents(langchain_documents)
                 
