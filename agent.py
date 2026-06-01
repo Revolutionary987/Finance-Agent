@@ -16,6 +16,7 @@ from langchain_openai import ChatOpenAI
 from langchain_google_genai import ChatGoogleGenerativeAI
 import uuid
 from langchain_core.documents import Document
+from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
 
 
 session_thread_id = str(uuid.uuid4())
@@ -24,11 +25,13 @@ config = {"configurable": {"thread_id": session_thread_id}}
 #LLMS
 primary_llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
 reserve_primary=ChatOpenAI(model="llama-3.3-70b", api_key=os.getenv("CEREBRAS_API_KEY"), base_url="https://api.cerebras.ai/v1",temperature=0)
-simple_reserve1=ChatOpenAI(base_url="https://api.sambanova.ai/v1",api_key=os.getenv("SAMBANOVA_API_KEY"),model="gemma-3-12b-it")
-simple_reserve2= ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
-simple_task_llm = simple_reserve2.with_fallbacks([simple_reserve1])
+# simple_reserve1=ChatOpenAI(base_url="https://api.sambanova.ai/v1",api_key=os.getenv("SAMBANOVA_API_KEY"),model="gemma-3-12b-it")
+# simple_reserve2= ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
+# simple_task_llm = simple_reserve2.with_fallbacks([simple_reserve1])
 primary_llm = primary_llm.with_fallbacks([reserve_primary])
 beast = ChatOpenAI(base_url="https://api.sambanova.ai/v1",api_key=os.getenv("SAMBANOVA_API_KEY"),model="Meta-Llama-3.3-70B-Instruct", temperature=0)
+slm_endpoint = HuggingFaceEndpoint(repo_id="meta-llama/Llama-3.2-3B-Instruct",task="text-generation",max_new_tokens=150,huggingfacehub_api_token=os.getenv("HF_TOKEN"))
+simple_task_llm = ChatHuggingFace(llm=slm_endpoint)
 
 retriever = Retriever(vector_db=None, langchain_documents=[])
 
@@ -41,7 +44,7 @@ class MainGraph(TypedDict):
 class Display(BaseModel):
     output: Annotated[str, Field(description="Display a structured output for the model")]
 
-structured_llm = primary_llm.with_structured_output(Display)
+structured_llm = simple_task_llm.with_structured_output(Display)
 
 class RAGSubGraph(TypedDict):
     question: Annotated[List[BaseMessage], add_messages]
@@ -101,7 +104,7 @@ async def grade(state: RAGSubGraph):
         ("human", human_prompt)
     ])
 
-    structured_grader = primary_llm.with_structured_output(retrieved_docs)
+    structured_grader = simple_task_llm.with_structured_output(retrieved_docs)
     grading_chain = grade_prompt | structured_grader
     
     filtered_docs = []
@@ -148,7 +151,7 @@ async def gen_answer(state: RAGSubGraph):
         ("human", human_prompt)
     ])
     
-    generating_ans = prompt | beast
+    generating_ans = prompt | primary_llm
     
     result = await generating_ans.ainvoke({
         "possible_ans": context_string,
