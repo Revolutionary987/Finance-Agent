@@ -101,7 +101,7 @@ async def grade(state: RAGSubGraph):
         ("human", human_prompt)
     ])
 
-    structured_grader = primaty_llm.with_structured_output(retrieved_docs)
+    structured_grader = primary_llm.with_structured_output(retrieved_docs)
     grading_chain = grade_prompt | structured_grader
     
     filtered_docs = []
