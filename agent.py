@@ -1,6 +1,6 @@
 import os
 from dotenv import load_dotenv
-load_dotenv()
+load_dotenv(dotenv_path=".env",override=True)
 
 from langgraph.graph import StateGraph, START, END
 from typing import TypedDict, Annotated, List, Literal
@@ -84,7 +84,7 @@ async def grade(state: RAGSubGraph):
     Your task is to evaluate retrieved SEC 10-K document chunks.
     Determine if the document contains facts, tables, or metrics relevant to the user's question.
     If it is relevant, grade it 'pass'. If it is completely irrelevant, grade it 'fail'.
-    
+
     CRITICAL INSTRUCTION: You are a backend data processor. You MUST output strictly and ONLY valid JSON. 
     Do NOT output any conversational text, explanations, or preamble. 
     Do NOT wrap the output in markdown blocks (no ```json). 
@@ -131,9 +131,9 @@ async def grade(state: RAGSubGraph):
 
 async def examiner(state: RAGSubGraph) -> Literal["Rewrite","Generate answer"]:
     if len(state["structured_out"]) > 0:
-        return "Rewrite"
-    else:
         return "Generate answer"
+    else:
+        return "Rewrite"
     
 async def gen_answer(state: RAGSubGraph):
     question = state["question"]
