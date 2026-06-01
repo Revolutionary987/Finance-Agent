@@ -100,19 +100,21 @@ async def grade(state: RAGSubGraph):
     current_question = question[-1].content
     docs = state["retrieved"]
     docs_parser = PydanticOutputParser(pydantic_object=retrieved_docs)
-    system_prompt = """You are Aegis, an elite financial auditor. 
-    Your task is to evaluate retrieved SEC 10-K document chunks.
-    Determine if the document contains facts, tables, or metrics relevant to the user's question.
-    If it is relevant, grade it 'pass'. If it is completely irrelevant, grade it 'fail'.
+    system_prompt = """You are a simple relevance filter. 
+    Your ONLY job is to look at a retrieved document chunk and see if it contains ANY numbers, metrics, or keywords that could potentially help answer the user's question.
+    
+    RULES:
+    - If the document contains ANY financial data, percentages, product names, or metrics related to the user's question, you MUST grade it 'pass'.
+    - Do not worry if the document contains extra, unrelated information. Just pass it.
+    - Only grade 'fail' if the document is 100% completely off-topic and useless.
 
     CRITICAL INSTRUCTION: You are a backend data processor. You MUST output strictly and ONLY valid JSON. 
     Do NOT output any conversational text, explanations, or preamble. 
-    Do NOT wrap the output in markdown blocks (no ```json). 
     
     {format_instructions}
     
     EXAMPLE OUTPUT:
-    {{"binary_score": "fail"}}
+    {{"binary_score": "pass"}}
     """
 
     human_prompt = """
