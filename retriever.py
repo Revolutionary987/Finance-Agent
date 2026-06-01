@@ -65,7 +65,6 @@ class Retriever:
                 llm=self.llm,
                 vectorstore=vector_db,
                 document_contents=strict_document_prompt,
-                document_contents="Detailed financial documents and SEC filings.",
                 metadata_field_info=metadata_field_info,
                 allowed_comparators=pgvector_comparators,
     )
