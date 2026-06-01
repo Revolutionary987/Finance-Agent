@@ -147,7 +147,7 @@ async def grade(state: RAGSubGraph):
             "format_instructions": docs_parser.get_format_instructions()
         })
         print(f"[DIAGNOSTIC] Grader evaluated chunk {i+1}/{len(docs)}: {result.binary_score.upper()}")
-        if result.binary_score == "pass":
+        if result.binary_score.lower().strip()== "pass":
             filtered_docs.append(docs[i])
             
     return {"structured_out": filtered_docs}
