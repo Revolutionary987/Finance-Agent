@@ -50,7 +50,7 @@ class Retriever:
                 metadata_field_info=metadata_field_info,
     )
             self.bm25_retriever=BM25Retriever.from_documents(langchain_documents)
-            self.bm25_retriever.k = 5
+            self.bm25_retriever.k = 3
             self.hybrid_retriever=EnsembleRetriever(
                 retrievers=[self.vector_retriever,self.bm25_retriever],
                 weights=[0.7,0.3]
