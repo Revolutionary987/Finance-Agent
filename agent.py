@@ -41,7 +41,7 @@ class MainGraph(TypedDict):
 class Display(BaseModel):
     output: Annotated[str, Field(description="Display a structured output for the model")]
 
-structured_llm = simple_task_llm.with_structured_output(Display)
+structured_llm = primary_llm.with_structured_output(Display)
 
 class RAGSubGraph(TypedDict):
     question: Annotated[List[BaseMessage], add_messages]
@@ -101,7 +101,7 @@ async def grade(state: RAGSubGraph):
         ("human", human_prompt)
     ])
 
-    structured_grader = simple_task_llm.with_structured_output(retrieved_docs)
+    structured_grader = primaty_llm.with_structured_output(retrieved_docs)
     grading_chain = grade_prompt | structured_grader
     
     filtered_docs = []
