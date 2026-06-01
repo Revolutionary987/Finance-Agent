@@ -136,7 +136,7 @@ class Ingestion:
                 collection_name="aegis_db",
                 connection=RENDER_DB_URL,
                 use_jsonb=True,
-                use_async=True, # Configures it for async use in LangGraph
+                async_mode=True, # Configures it for async use in LangGraph
         )
 
             # 2. Add documents asynchronously if they exist
