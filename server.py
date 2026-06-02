@@ -50,14 +50,16 @@ class Feedbackrequest(BaseModel):
     thread_id:str
     status:str
     feedback:Optional[str]=None
+
 @traceable(name="call method")
 @app.post("/app/call")
 async def restarting(question: str = Form(...), 
     thread_id: Optional[str] = Form(None),
     file: Optional[UploadFile] = File(None)):
-    # Form tells the FastApi to accept the data directly instead of expecting json format
+    # Form tells the FastAPI to accept the data directly instead of expecting json format
     thread_id=thread_id or str(uuid.uuid4())
     config={"configurable":{"thread_id":thread_id}}
+    
     if file:
         os.makedirs("Docs",exist_ok=True)
         file_path=os.path.join("Docs",file.filename)
@@ -75,7 +77,6 @@ async def restarting(question: str = Form(...),
         question = f"{question}\n\n[System: The user attached a file. It has been ingested into the Chroma Vector Database. Use your Retrieval tools to search it.]"
 
     initial_ques={"question":[HumanMessage(content=(question))]}
-    memory=AsyncPostgresSaver(pool)
     state=await agent.ainvoke(initial_ques,config=config)
     # same as .get function of dictionary
     messages_display=state.get("output","Drafting the answer")
@@ -101,12 +102,12 @@ async def receivefeedback(feedback:Feedbackrequest):
     config = {"configurable": {"thread_id": feedback.thread_id}}
     try:
         if feedback.status=="Yes":
-            agent.update_state(config, {"human_feedback": "Yes"}, as_node="hitl")
+            await agent.aupdate_state(config, {"human_feedback": "Yes"}, as_node="hitl")
         elif feedback.status=="No":
             await agent.aupdate_state(
                 config,
                 {"human_feedback":"No",
-                 # send the human feedback to the llm 
+                 # send the human feedback to the llm
                 "question": [HumanMessage(content=f"Human Feedback: {feedback.feedback}")]
                 }
                 ,as_node="hitl")
