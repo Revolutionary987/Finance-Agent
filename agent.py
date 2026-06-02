@@ -24,6 +24,8 @@ from langchain_huggingface import HuggingFaceEmbeddings
 session_thread_id = str(uuid.uuid4())
 config = {"configurable": {"thread_id": session_thread_id}}
 
+os.environ["LANGSMITH_API_KEY"]=os.getenv("LANGCHAIN_API_KEY")
+os.environ["LANGSMITH_TRACING"]="true"
 #LLMS
 primary_llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
 reserve_primary=ChatOpenAI(model="llama-3.3-70b", api_key=os.getenv("CEREBRAS_API_KEY"), base_url="https://api.cerebras.ai/v1",temperature=0)
