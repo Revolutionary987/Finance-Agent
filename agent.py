@@ -154,8 +154,10 @@ async def grade(state: RAGSubGraph):
 
 async def examiner(state: RAGSubGraph) -> Literal["Rewrite","Generate answer"]:
     if len(state["structured_out"]) > 0:
+        print("[DIAGNOSTIC] ---> GENERATE ANSWER")
         return "Generate answer"
     else:
+        print("[DIAGNOSTIC] ---> REWRITE")
         return "Rewrite"
     
 async def gen_answer(state: RAGSubGraph):
@@ -251,6 +253,7 @@ async def hal_check(state: RAGSubGraph):
 
 async def check_hallucination(state: RAGSubGraph) -> Literal["Generate answer", "Answer check"]:
     if state["hallucination"] == "Hallucination":
+        print(f"\n[DIAGNOSTIC] HAL_CHECK: Grade was '{state['hallucination']}' (Attempt {state.get('generation_attempts', 0)})")
         if state.get("generation_attempts", 0) >= 3:
             return "Rewrite"
             
@@ -323,6 +326,7 @@ async def rewrite_query(state: RAGSubGraph):
     question = state["question"]
     current_question = question[-1].content
     rewritten_count=state.get("rewritten",0)
+    print(f"\n[DIAGNOSTIC] REWRITE: Triggered! (Count: {state.get('rewritten', 0)})")
     if rewritten_count >= 4:
         failure_msg = "Aegis audited the SEC filings multiple times but could not find the specific financial data required to answer this query."
         return {
