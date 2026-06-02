@@ -323,7 +323,7 @@ class RewrittenQuery(BaseModel):
 
 async def rewrite_query(state: RAGSubGraph):
     question = state["question"]
-    current_question = question[-1].content
+    current_org_ques = question[-(rewritten_count + 1)].content
     rewritten_count=state.get("rewritten",0)
     print(f"\n[DIAGNOSTIC] REWRITE: Triggered! (Count: {state.get('rewritten', 0)})")
     if rewritten_count >= 4:
@@ -357,8 +357,9 @@ async def rewrite_query(state: RAGSubGraph):
     structured_out = primary_llm.with_structured_output(RewrittenQuery)
     gen_ans = prompt | structured_out
     result = await gen_ans.ainvoke({
-            "question": current_question
+            "question": current_org_ques
         })
+    print(f"[DIAGNOSTIC] New Search Query: {result.new_query}")
     return {"question": [HumanMessage(content=result.new_query)],"rewritten":rewritten_count+1}
 async def decider(state:RAGSubGraph)->Literal["retriever", "output"]:
     if state.get("rewritten",0)<=4:

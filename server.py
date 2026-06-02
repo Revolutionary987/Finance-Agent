@@ -17,6 +17,8 @@ from fastapi.middleware.cors import CORSMiddleware
 from ingestion import Ingestion
 import agent as agent_module
 from retriever import Retriever
+from langchain_core.tracers.context import tracing_v2_enabled
+
 
 DB_URL = os.getenv("DATABASE_URL")
 if not DB_URL:
@@ -59,7 +61,7 @@ async def restarting(question: str = Form(...),
     # Form tells the FastAPI to accept the data directly instead of expecting json format
     thread_id=thread_id or str(uuid.uuid4())
     config={"configurable":{"thread_id":thread_id}}
-    
+
     if file:
         os.makedirs("Docs",exist_ok=True)
         file_path=os.path.join("Docs",file.filename)
@@ -77,7 +79,8 @@ async def restarting(question: str = Form(...),
         question = f"{question}\n\n[System: The user attached a file. It has been ingested into the Chroma Vector Database. Use your Retrieval tools to search it.]"
 
     initial_ques={"question":[HumanMessage(content=(question))]}
-    state=await agent.ainvoke(initial_ques,config=config)
+    with tracing_v2_enabled(project_name="Aegis"):
+        state=await agent.ainvoke(initial_ques,config=config)
     # same as .get function of dictionary
     messages_display=state.get("output","Drafting the answer")
     raw_docs = state.get("documents", [])
