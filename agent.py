@@ -323,8 +323,8 @@ class RewrittenQuery(BaseModel):
 
 async def rewrite_query(state: RAGSubGraph):
     question = state["question"]
-    current_org_ques = question[-(rewritten_count + 1)].content
     rewritten_count=state.get("rewritten",0)
+    current_org_ques = question[-(rewritten_count + 1)].content
     print(f"\n[DIAGNOSTIC] REWRITE: Triggered! (Count: {state.get('rewritten', 0)})")
     if rewritten_count >= 4:
         failure_msg = "Aegis audited the SEC filings multiple times but could not find the specific financial data required to answer this query."
