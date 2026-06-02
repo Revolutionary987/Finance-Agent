@@ -1,8 +1,8 @@
 import os
 import uuid
 from dotenv import load_dotenv
+from langsmith import traceable
 load_dotenv()
-
 import shutil
 from fastapi import FastAPI,HTTPException,UploadFile,File,Form
 from pydantic import BaseModel
@@ -12,7 +12,6 @@ from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
 from psycopg_pool import AsyncConnectionPool
 from psycopg.rows import dict_row
 from contextlib import asynccontextmanager
-
 from agent import graph
 from fastapi.middleware.cors import CORSMiddleware
 from ingestion import Ingestion
@@ -26,6 +25,7 @@ if not DB_URL:
 POOL_URL = DB_URL.replace("+psycopg", "")
 pool = AsyncConnectionPool(conninfo=POOL_URL, max_size=20,kwargs={"autocommit": True, "row_factory": dict_row}, open=False)
 agent=None
+@traceable
 @asynccontextmanager
 async def lifespan(FastAPI):
     global agent
@@ -50,7 +50,7 @@ class Feedbackrequest(BaseModel):
     thread_id:str
     status:str
     feedback:Optional[str]=None
-
+@traceable(name="call method")
 @app.post("/app/call")
 async def restarting(question: str = Form(...), 
     thread_id: Optional[str] = Form(None),
@@ -95,7 +95,7 @@ async def restarting(question: str = Form(...),
         "message_display":messages_display,
         "retrieved_context":real_documents
     }
-
+@traceable(name="feedback loop")
 @app.post("/app/feedback")
 async def receivefeedback(feedback:Feedbackrequest):
     config = {"configurable": {"thread_id": feedback.thread_id}}

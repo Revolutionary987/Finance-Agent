@@ -1,6 +1,7 @@
 import os
 import json
 from dotenv import load_dotenv
+from langsmith import traceable
 load_dotenv()
 
 from pydantic import BaseModel
@@ -89,6 +90,7 @@ class Retriever:
         else:
             self.master_retriever = None 
             print("Retriever initialized without vector_db.")
+    @traceable(name="retriving")
     async def search(self, user_query):
         if self.master_retriever is None:
             print("Error: Vector Database not connected.")

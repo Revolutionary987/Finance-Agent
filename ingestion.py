@@ -1,6 +1,7 @@
 import os
 import json
 from dotenv import load_dotenv
+from langsmith import traceable
 load_dotenv()
 
 from langchain.messages import HumanMessage
@@ -13,13 +14,13 @@ from langchain_huggingface import HuggingFaceEmbeddings
 from unstructured.partition.auto import partition
 from unstructured.chunking.title import chunk_by_title
 from langchain_postgres import PGVector
-
 class Ingestion:
     def __init__ (self, docs):
         self.docs=docs
         self.chunks=[]
         self.elements=[]
         self.model=ChatGroq(model="llama-3.2-11b-vision-preview", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
+    @traceable(name="Partitioning")
     def partition(self):
         if not os.path.exists(self.docs):
             raise FileNotFoundError("Couldn't find the file")
@@ -33,6 +34,7 @@ class Ingestion:
             extract_image_block_to_payload=True
         )
         return self.elements
+    @traceable(name="Chunking")
     def chunkdocs(self):
         if len(self.elements)==0:
             raise ValueError("No elements found")
@@ -43,7 +45,7 @@ class Ingestion:
             include_orig_elements=True
         )
         return self.chunks
-    
+    @traceable(name="Separating contents")
     def sep_contents(self,chunk):
         content={
             "text":[],
@@ -66,6 +68,7 @@ class Ingestion:
                     content["images"].append(element.metadata.image_base64)
         content["types"]=list(set(content["types"]))
         return content
+    @traceable(name="Summary")
     def summary(self,text:str,tables:list[str],images:list[str])->str:
         try:
             prompt=f"""You are an expert technical assistant. Analyze the following content 
@@ -93,7 +96,7 @@ class Ingestion:
             return response.content
         except Exception as e:
             return (f"Summary failed due to {e}")
-
+    @traceable(name="Creating langchain documents")
     def document(self):
         langchain_documents=[]
         if len(self.chunks)==0:
@@ -120,7 +123,7 @@ class Ingestion:
             )
             langchain_documents.append(docs)
         return langchain_documents
-    
+    @traceable(name="embeddings")
     async def embedding(self,langchain_documents):
         model_name="BAAI/bge-m3"
         model_kwargs={"device":"cpu"}

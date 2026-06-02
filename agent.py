@@ -1,6 +1,7 @@
 import os
 from dotenv import load_dotenv
-load_dotenv(dotenv_path=".env",override=True)
+from langsmith import traceable
+load_dotenv()
 
 from langchain_postgres import PGVector
 from langgraph.graph import StateGraph, START, END
@@ -51,7 +52,6 @@ vector_store = PGVector(
     async_mode=True
 )
 retriever = Retriever(vector_db=vector_store, langchain_documents=[])
-
 class MainGraph(TypedDict):
     question: Annotated[List[BaseMessage], add_messages]
     human_feedback:str
