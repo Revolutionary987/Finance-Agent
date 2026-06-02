@@ -239,7 +239,7 @@ async def hal_check(state: RAGSubGraph):
         ("human", human_prompt)
     ])
     
-    gen_cycle = generation | simple_task_llm | hal_parser
+    gen_cycle = generation | primary_llm | hal_parser
     
     result = await gen_cycle.ainvoke({
         "documents": context_string,
@@ -300,7 +300,7 @@ async def answer_check(state: RAGSubGraph):
     ])
     
     # structured_out = simple_task_llm.with_structured_output(cond_answer)
-    gen_out = prompt | simple_task_llm | ans_parser
+    gen_out = prompt | primary_llm | ans_parser
     
     result = await gen_out.ainvoke({
         "answer": answer,
