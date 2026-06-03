@@ -68,15 +68,16 @@ async def restarting(question: str = Form(...),
 
         with open(file_path,"wb") as buffer:
             shutil.copyfileobj(file.file,buffer)
-        ingestor=Ingestion(
-            docs=file_path
-        )
-        ingestor.partition()
-        ingestor.chunkdocs()
-        final_docs=ingestor.document()
-        db=await ingestor.embedding(final_docs)
-        await agent_module.vector_store.aadd_documents(final_docs)
-        question = f"{question}\n\n[System: The user attached a file. It has been ingested into the Chroma Vector Database. Use your Retrieval tools to search it.]"
+        with tracing_v2_enabled(project_name="Aegis"):
+            ingestor=Ingestion(
+                docs=file_path
+            )
+            ingestor.partition()
+            ingestor.chunkdocs()
+            final_docs=ingestor.document()
+            db=await ingestor.embedding(final_docs)
+            await agent_module.vector_store.aadd_documents(final_docs)
+            question = f"{question}\n\n[System: The user attached a file. It has been ingested into the Chroma Vector Database. Use your Retrieval tools to search it.]"
 
     initial_ques={"question":[HumanMessage(content=(question))]}
     with tracing_v2_enabled(project_name="Aegis"):

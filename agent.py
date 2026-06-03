@@ -21,6 +21,7 @@ from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_huggingface import HuggingFaceEmbeddings
+from langchain_core.runnables import RunnableConfig
 
 session_thread_id = str(uuid.uuid4())
 config = {"configurable": {"thread_id": session_thread_id}}
@@ -86,7 +87,7 @@ async def retriever_graph(state: RAGSubGraph):
     """The node calls the retriever function and retrieves the necessary documents"""
     query = state["question"]
     current_query = query[-1].content
-    search_results = await retriever.search(current_query)
+    search_results = await retriever.search(current_query,config=config)
     print(f"\n[DIAGNOSTIC] Retriever found {len(search_results['documents'])} documents in the database.")
     
     return {"retrieved": search_results["documents"]}

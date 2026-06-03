@@ -91,9 +91,10 @@ class Retriever:
             self.master_retriever = None 
             print("Retriever initialized without vector_db.")
     @traceable(name="retriving")
-    async def search(self, user_query):
+    async def search(self, user_query,config=None):
         if self.master_retriever is None:
             print("Error: Vector Database not connected.")
             return {"documents":[]}
-        return {"documents": await self.master_retriever.ainvoke(user_query)}
+        raw_docs = await self.vector_db.asimilarity_search(user_query, k=5, config=config)
+        return {raw_docs}
     
