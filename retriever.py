@@ -96,6 +96,6 @@ class Retriever:
             print("Error: Vector Database not connected.")
             return {"documents":[]}
         raw_vector_db = self.master_retriever.base_retriever.vectorstore
-        raw_docs = await self.raw_vector_db.asimilarity_search(user_query, k=5, config=config)
+        raw_docs = await raw_vector_db.asimilarity_search(user_query, k=5, config=config)
         return {raw_docs}
     
