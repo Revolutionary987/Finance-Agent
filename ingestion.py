@@ -19,7 +19,7 @@ class Ingestion:
         self.docs=docs
         self.chunks=[]
         self.elements=[]
-        self.model=ChatGroq(model="llama-3.2-11b-vision-preview", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
+        self.model=ChatGroq(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
     @traceable(name="Partitioning")
     def partition(self):
         if not os.path.exists(self.docs):
@@ -109,19 +109,22 @@ class Ingestion:
                 tables=data["tables"],
                 images=data["images"],
             )
-            docs=Document(
-                page_content=summary_gen,
-                metadata={
-                    "original_data":json.dumps(
-                        {
-                            'raw_text':data['text'],
-                            'table_as_html':data['tables'],
-                            'base_64_image':data['images'],
-                        }
-                    )
-                } 
-            )
-            langchain_documents.append(docs)
+            if summary_gen is not None:
+                docs=Document(
+                    page_content=summary_gen,
+                    metadata={
+                        "original_data":json.dumps(
+                            {
+                                'raw_text':data['text'],
+                                'table_as_html':data['tables'],
+                                'base_64_image':data['images'],
+                            }
+                        )
+                    } 
+                )
+                langchain_documents.append(docs)
+        if len(langchain_documents)==0:
+            raise RuntimeError("All chunks failed summarization. Nothing to insert into the DB.")
         return langchain_documents
     @traceable(name="embeddings")
     async def embedding(self,langchain_documents):
