@@ -97,5 +97,5 @@ class Retriever:
             return {"documents":[]}
         raw_vector_db = self.master_retriever.base_retriever.vectorstore
         raw_docs = await raw_vector_db.asimilarity_search(user_query, k=5, config=config)
-        return {raw_docs}
+        return {"documents":raw_docs}
     
