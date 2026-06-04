@@ -34,7 +34,7 @@ reserve_primary=ChatOpenAI(model="llama-3.3-70b", api_key=os.getenv("CEREBRAS_AP
 primary_llm = primary_llm.with_fallbacks([reserve_primary])
 beast = ChatOpenAI(base_url="https://api.sambanova.ai/v1",api_key=os.getenv("SAMBANOVA_API_KEY"),model="Meta-Llama-3.3-70B-Instruct", temperature=0)
 slm_endpoint = HuggingFaceEndpoint(repo_id="meta-llama/Llama-3.1-8B-Instruct",task="text-generation",max_new_tokens=150,huggingfacehub_api_token=os.getenv("HF_TOKEN"))
-simple_task_llm = ChatHuggingFace(llm=slm_endpoint)
+simple_llm = ChatHuggingFace(llm=slm_endpoint)
 
 DB_URL = os.getenv("DATABASE_URL")
 model_name="BAAI/bge-m3"
@@ -92,52 +92,52 @@ async def retriever_graph(state: RAGSubGraph):
     
     return {"retrieved": search_results["documents"]}
 
-class retrieved_docs(BaseModel):
-    binary_score: Annotated[str, Field(description="Return 'pass' or 'fail'")]
+class DocumentGrade(BaseModel):
+    doc_id: int = Field(description="The ID of the document chunk (e.g., 0, 1, 2)")
+    binary_score: str = Field(description="Strictly 'pass' or 'fail'")
+
+class BatchGrader(BaseModel):
+    evaluations: List[DocumentGrade] = Field(description="List of evaluations for all provided documents")
 
 async def grade(state: RAGSubGraph):
     question = state["question"]
     current_question = question[-1].content
     docs = state["retrieved"]
-    docs_parser = PydanticOutputParser(pydantic_object=retrieved_docs)
-    system_prompt = """You are a simple relevance filter. 
-    Your ONLY job is to look at a retrieved document chunk and see if it contains ANY numbers, metrics, or keywords that could potentially help answer the user's question.
+    docs_string = ""
+    for i, doc in enumerate(docs):
+        docs_string += f"\n<doc id='{i}'>\n{doc.page_content}\n</doc>\n"
+
+    docs_parser = PydanticOutputParser(pydantic_object=BatchGrader)
+    
+    system_prompt = """You are a strict relevance filter. 
+    You will be given a list of documents. Evaluate EACH document individually to see if it contains ANY numbers, metrics, or keywords that could help answer the user's question.
     
     RULES:
-    - If the document contains ANY financial data, percentages, product names, or metrics related to the user's question, you MUST grade it 'pass'.
-    - Do not worry if the document contains extra, unrelated information. Just pass it.
-    - Only grade 'fail' if the document is 100% completely off-topic and useless.
-
-    CRITICAL INSTRUCTION: You are a backend data processor. You MUST output strictly and ONLY valid JSON. 
-    Do NOT output any conversational text, explanations, or preamble. 
+    - If the document contains relevant financial data, grade it 'pass'.
+    - If it is completely off-topic, grade it 'fail'.
+    
+    CRITICAL INSTRUCTION: You MUST output strictly valid JSON matching the format instructions. Evaluate every document provided.
     
     {format_instructions}
-    
-    EXAMPLE OUTPUT:
-    {{"binary_score": "pass"}}
     """
 
     human_prompt = """
-    Here is the user's question:
+    User Question:
     <user_question>
     {question}
     </user_question>
 
-    Here is the retrieved document chunk:
-    <retrieved_document>
-    {docs}
-    </retrieved_document>
-
-    Carefully analyze the document against the question and provide your binary score.
+    Documents to Evaluate:
+    {docs_string}
     """
-    
+
     grade_prompt = ChatPromptTemplate.from_messages([
         ("system", system_prompt),
         ("human", human_prompt)
     ])
 
     # structured_grader = simple_task_llm.with_structured_output(retrieved_docs)
-    grading_chain = grade_prompt | primary_llm | docs_parser
+    grading_chain = grade_prompt | simple_llm | docs_parser
     
     filtered_docs = []
     for i in range(len(docs)):
@@ -146,10 +146,12 @@ async def grade(state: RAGSubGraph):
             "docs": docs[i].page_content,
             "format_instructions": docs_parser.get_format_instructions()
         })
-        print(f"[DIAGNOSTIC] Grader evaluated chunk {i+1}/{len(docs)}: {result.binary_score.upper()}")
-        if result.binary_score.lower().strip()== "pass":
-            filtered_docs.append(docs[i])
-            
+    filtered_docs = []
+    # result.evaluations is a list that contains document id and binary_score of each chunk or document
+    for evaluation in result.evaluations:
+        print(f"[DIAGNOSTIC] Grader evaluated doc {evaluation.doc_id}: {evaluation.binary_score.upper()}")
+        if evaluation.binary_score.lower().strip() == "pass":
+            filtered_docs.append(docs[evaluation.doc_id])
     return {"structured_out": filtered_docs}
 
 async def examiner(state: RAGSubGraph) -> Literal["Rewrite","Generate answer"]:
@@ -241,7 +243,7 @@ async def hal_check(state: RAGSubGraph):
         ("human", human_prompt)
     ])
     
-    gen_cycle = generation | primary_llm | hal_parser
+    gen_cycle = generation | simple_llm | hal_parser
     
     result = await gen_cycle.ainvoke({
         "documents": context_string,
@@ -302,8 +304,8 @@ async def answer_check(state: RAGSubGraph):
         ("human", human_prompt)
     ])
     
-    # structured_out = simple_task_llm.with_structured_output(cond_answer)
-    gen_out = prompt | primary_llm | ans_parser
+    # structured_out = simple_llm.with_structured_output(cond_answer)
+    gen_out = prompt | simple_llm | ans_parser
     
     result = await gen_out.ainvoke({
         "answer": answer,
@@ -370,11 +372,13 @@ async def rewrite_query(state: RAGSubGraph):
         })
     print(f"[DIAGNOSTIC] New Search Query: {result.new_query}")
     return {"question": [HumanMessage(content=result.new_query)],"rewritten":rewritten_count+1}
+
 async def decider(state:RAGSubGraph)->Literal["retriever", "output"]:
     if state.get("rewritten",0)<=4:
         return "retriever"
     else:
         return "output"
+    
 async def to_parent(state: RAGSubGraph):
     final_ans = state.get("answer","Sorry couldn't find the answer for your query")
     docs = state.get("structured_out", [])
@@ -382,6 +386,7 @@ async def to_parent(state: RAGSubGraph):
 
 async def hitl(state:MainGraph):
     return state
+
 async def check_hitl(state:MainGraph)->Literal["Output","Subgraph","hitl"]:
     feedback = state.get("human_feedback")
     if feedback =="Yes":
