@@ -41,12 +41,12 @@ class Retriever:
             metadata_field_info = [
                 {
                     "name": "company",
-                    "description": "The name of the company (e.g., 'Apple Inc.'). STRICT RULE: Use 'eq' or 'ilike'. Do NOT use 'contain'.",
+                    "description": "The name of the company (e.g., 'Apple Inc.'). STRICT RULE: Use 'eq' or 'like'. Do NOT use 'contain'.",
                     "type": "string",
                 },
                 {
                     "name": "document_type",
-                    "description": "The type of SEC filing (e.g., '10-K', '10-Q'). STRICT RULE: Use 'eq' or 'ilike'.",
+                    "description": "The type of SEC filing (e.g., '10-K', '10-Q'). STRICT RULE: Use 'eq' or 'like'.",
                     "type": "string",
                 },
                 {
@@ -66,18 +66,18 @@ class Retriever:
                 },
                 {
                     "name": "section",
-                    "description": "The specific SEC document section title (e.g., 'Risk Factors', 'Item 8'). STRICT RULE: Use 'ilike' for partial matches. Do NOT use 'contain'.",
+                    "description": "The specific SEC document section title (e.g., 'Risk Factors', 'Item 8'). STRICT RULE: Use 'like' for partial matches. Do NOT use 'contain'.",
                     "type": "string",
                 }
             ]
+            
             strict_document_prompt = (
                 "Detailed financial documents and SEC filings. "
                 "CRITICAL INSTRUCTION: When creating metadata filters for string fields, "
                 "you are STRICTLY FORBIDDEN from using the 'contain' operator. "
-                "You MUST use the 'ilike' or 'eq' operator instead. "
+                "You MUST use the 'like' or 'eq' operator instead. "
                 "Failure to follow this rule will crash the SQL database."
             )
-
             self.vector_retriever = SelfQueryRetriever.from_llm(
                 llm=self.llm,
                 vectorstore=vector_db,
