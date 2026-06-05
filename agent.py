@@ -140,13 +140,11 @@ async def grade(state: RAGSubGraph):
     grading_chain = grade_prompt | simple_llm | docs_parser
     
     filtered_docs = []
-    for i in range(len(docs)):
-        result = await grading_chain.ainvoke({
+    result = await grading_chain.ainvoke({
             "question": current_question, 
-            "docs": docs_string,
+            "docs_string": docs_string,
             "format_instructions": docs_parser.get_format_instructions()
         })
-    filtered_docs = []
     # result.evaluations is a list that contains document id and binary_score of each chunk or document
     for evaluation in result.evaluations:
         print(f"[DIAGNOSTIC] Grader evaluated doc {evaluation.doc_id}: {evaluation.binary_score.upper()}")
