@@ -72,11 +72,11 @@ async def restarting(question: str = Form(...),
             shutil.copyfileobj(file.file,buffer)
         with tracing_v2_enabled(project_name="Aegis"):
             ingestor=Ingestion(
-                docs=file_path
+                file_path=file_path
             )
             await ingestor.partition()
-            final_docs=await ingestor.chunking()
-            db=await ingestor.embedding(final_docs)
+            await ingestor.chunking()
+            await ingestor.embedding()
             # await agent_module.vector_store.aadd_documents(final_docs)
             question = f"{question}\n\n[System: The user attached a file. It has been ingested into the Chroma Vector Database. Use your Retrieval tools to search it.]"
 

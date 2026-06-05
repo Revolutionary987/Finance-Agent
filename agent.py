@@ -48,7 +48,7 @@ embedding_model=HuggingFaceEmbeddings(
 
 vector_store = PGVector(
     embeddings=embedding_model,
-    collection_name="aegis_sec_filings",
+    collection_name="aegis_db",
     connection=DB_URL,
     async_mode=True
 )

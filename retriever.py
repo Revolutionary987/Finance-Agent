@@ -95,6 +95,6 @@ class Retriever:
         if self.master_retriever is None:
             print("Error: Vector Database not connected.")
             return {"documents":[]}
-        raw_docs = await self.master_retriever(user_query, k=5, config=config)
+        raw_docs = await self.master_retriever.ainvoke(user_query, config=config)
         return {"documents":raw_docs}
     
