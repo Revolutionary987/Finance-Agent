@@ -1,133 +1,121 @@
 import os
-import json
 from dotenv import load_dotenv
 from langsmith import traceable
 load_dotenv()
 
-from langchain.messages import HumanMessage
-from pydantic import BaseModel
-from typing import List,Dict
+import re
 from langchain_groq import ChatGroq
 from langchain_core.documents import Document
-from langchain_chroma import Chroma
 from langchain_huggingface import HuggingFaceEmbeddings
-from unstructured.partition.auto import partition
 from unstructured.chunking.title import chunk_by_title
 from langchain_postgres import PGVector
+from unstructured.partition.html import partition_html
+
 class Ingestion:
-    def __init__ (self, docs):
-        self.docs=docs
+    def __init__ (self, file_path):
+        self.docs=file_path
         self.chunks=[]
         self.elements=[]
         self.model=ChatGroq(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
+
     @traceable(name="Partitioning")
-    def partition(self):
+    async def partition(self):
         if not os.path.exists(self.docs):
             raise FileNotFoundError("Couldn't find the file")
-        
-        self.elements=partition(
-            filename=self.docs,
-            extract_images_in_pdf=True,
-            strategy="hi_res",
-            infer_table_structure=True,
-            chunking_strategy="by_title",
-            extract_image_block_to_payload=True
+        html_strings=await self.extract_html(self.docs)
+        self.elements=partition_html(
+            text=html_strings,
         )
         return self.elements
+    async def extract_metadata(self,raw_text):
+        metadata={
+            "Company_Name":"Unknown",
+            "Year":"Unknown",
+            "Filed_date":"Unknown",
+            "Expired_date":"Unknown",
+            "Doc_type":"Unknown"
+        }
+        # refer re library documentation
+        # \s* - Neglect or skip the whitespaces \s - Whitespaces , * - Zero or more times
+        # () - Tells python to grab the text and save it also return as a variable
+        # .*- Tells to grab everything 
+        company_name=re.search(r"COMPANY CONFORMED NAME:\s*(.*)",raw_text)
+        if company_name:
+        # group(0) means returns entire match
+        # EX: COMPANY COMFORMED NAME  APPLE
+        # group(1) means return specific item present in the parentesis
+        # APPLE
+
+            metadata["Company_Name"]=company_name.group(1).strip()
+        # \d{number} means grab the exact num of elementws specified
+        published_yr=re.search(r"CONFORMED PERIOD OF REPORT:\s*(\d{8})",raw_text)
+        if published_yr:
+            raw_date=published_yr.group(1).strip()
+            metadata["Expired_date"]=f"{raw_date[:4]}-{raw_date[4:6]}-{raw_date[6:]}"
+            metadata["Year"]=raw_date[:4]
+        filed_match = re.search(r"FILED AS OF DATE:\s*(\d{8})",raw_text)
+        if filed_match:
+            raw_filed = filed_match.group(1).strip()
+            # Format "20241101" -> "2024-11-01"
+            metadata["Filed_date"] = f"{raw_filed[:4]}-{raw_filed[4:6]}-{raw_filed[6:]}"
+        doc_type=re.search(r"CONFORMED SUBMISSION TYPE:\s*(.*)",raw_text)
+        if doc_type:
+            metadata["Doc_type"]=doc_type.group(1).strip()
+        return metadata
+    
     @traceable(name="Chunking")
-    def chunkdocs(self):
-        if len(self.elements)==0:
-            raise ValueError("No elements found")
-        self.chunks=chunk_by_title(
+    async def chunking(self):
+        if len(self.elements) == 0:
+            raise ValueError("No elements found to chunk.")
+        
+        data=self.metadata
+        # sees the generated headings like title , tables etc from the partition_html then chunks them by title\
+        chunks=chunk_by_title(
             elements=self.elements,
             max_characters=2000,
-            overlap=300,
-            include_orig_elements=True
+            combine_text_under_n_chars=500,
+            overlap=300
         )
+
+        for chunk in chunks:
+            if "Table" in str(type(chunk)) and hasattr(chunk.metadata,"text_as_html") and chunk.metadata.text_as_html:
+                page_content=chunk.metadata.text_as_html
+                chunk_type="table"
+            else:
+                page_content=chunk.text
+                chunk_type="text"
+
+            doc=Document(
+                page_content=page_content,
+                metadata={
+                    "company": data["Company_Name"],
+                    "document_type": data["Doc_type"],
+                    "financial_period_end":data["Expired_date"],
+                    "legally_filed_date":data["Filed_date"],
+                    "type": chunk_type,
+                    "section": chunk.metadata.title if hasattr(chunk.metadata, "title") else "Unknown"
+            }
+        )
+            self.chunks.append(doc)
         return self.chunks
-    @traceable(name="Separating contents")
-    def sep_contents(self,chunk):
-        content={
-            "text":[],
-            "images":[],
-            "tables":[],
-            "types":[],
-        }
-        if hasattr(chunk,"text") and chunk.text:
-            content["text"].append(chunk.text)
-        if hasattr(chunk,"metadata") and hasattr(chunk.metadata,"orig_elements"):
-            for element in chunk.metadata.orig_elements:
-                ele_type=(type(element).__name__).title()
-
-                if ele_type=="Table":
-                    content["types"].append("Table")
-                    html_table=getattr(chunk.metadata,"table_as_html",element.text)
-                    content["tables"].append(html_table)
-                if ele_type=="Image":
-                    content["types"].append("Image")
-                    content["images"].append(element.metadata.image_base64)
-        content["types"]=list(set(content["types"]))
-        return content
-    @traceable(name="Summary")
-    def summary(self,text:str,tables:list[str],images:list[str])->str:
-        try:
-            prompt=f"""You are an expert technical assistant. Analyze the following content 
-            and generate a highly detailed, searchable summary.
-            Include key facts, metrics, and describe any visual anomalies.
-            
-            TEXT:
-            {text}
-            
-            TABLES:
-            {tables}
-
-            """
-            message_content = [
-                {"type": "text", "text": prompt}
-            ]
-            # Llm talks to json not binary files 
-            for img_base64 in images:
-                message_content.append({
-                    "type":"image_url",
-                    "image_url":{"url":f"data:image/jpeg;base64,{img_base64}"}
-                })
-            message=HumanMessage(content=message_content)
-            response=self.model.invoke([message])
-            return response.content
-        except Exception as e:
-            return (f"Summary failed due to {e}")
-    @traceable(name="Creating langchain documents")
-    def document(self):
-        langchain_documents=[]
-        if len(self.chunks)==0:
-            raise ValueError("No data found")
-        for chunk in self.chunks:
-            data=self.sep_contents(chunk)
-
-            summary_gen=self.summary(
-                text=data["text"],
-                tables=data["tables"],
-                images=data["images"],
-            )
-            if summary_gen is not None:
-                docs=Document(
-                    page_content=summary_gen,
-                    metadata={
-                        "original_data":json.dumps(
-                            {
-                                'raw_text':data['text'],
-                                'table_as_html':data['tables'],
-                                'base_64_image':data['images'],
-                            }
-                        )
-                    } 
-                )
-                langchain_documents.append(docs)
-        if len(langchain_documents)==0:
-            raise RuntimeError("All chunks failed summarization. Nothing to insert into the DB.")
-        return langchain_documents
+# it does remove html tags and then converts the content into texts like Title,Table etc on seeing the html tag
+    async def extract_html(self,file_path):
+        with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
+            raw_file = f.read()
+        self.metadata=await self.extract_metadata(raw_file)
+        documents = re.findall(r'<DOCUMENT>(.*?)</DOCUMENT>', raw_file, re.DOTALL | re.IGNORECASE)
+        for doc in documents:
+            if re.search(r'<TYPE>(10-K|10-Q)', doc, re.IGNORECASE):
+                # The iXBRL safe regex to capture the HTML block
+                html_match = re.search(r'(<html[^>]*>.*?</html>)', doc, re.DOTALL | re.IGNORECASE)
+                if html_match:
+                    print("[SYSTEM] 10-K Found! Stripping Base64 images and XML noise...")
+                    return html_match.group(1)
+                    
+        raise ValueError("Could not find a valid 10-K HTML block in this file.")
+    
     @traceable(name="embeddings")
-    async def embedding(self,langchain_documents):
+    async def embedding(self):
         model_name="BAAI/bge-m3"
         model_kwargs={"device":"cpu"}
         encode_kwargs={"normalize_embeddings":True}
@@ -151,7 +139,6 @@ class Ingestion:
                 use_jsonb=True,
                 async_mode=True, 
         )
-        if langchain_documents:
-            await vector_db.aadd_documents(langchain_documents)
-                
+        if self.chunks:
+            await vector_db.aadd_documents(self.chunks)     
             return vector_db

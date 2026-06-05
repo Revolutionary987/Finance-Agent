@@ -29,6 +29,7 @@ pool = AsyncConnectionPool(conninfo=POOL_URL, max_size=20,kwargs={"autocommit": 
 agent=None
 @traceable
 @asynccontextmanager
+
 async def lifespan(FastAPI):
     global agent
     await pool.open()
@@ -38,6 +39,7 @@ async def lifespan(FastAPI):
     # yield is like return but it won't end the function it freezes it then continues when it is called
     yield
     await pool.close()
+
 app=FastAPI(lifespan=lifespan)
 
 app.add_middleware(
@@ -72,11 +74,10 @@ async def restarting(question: str = Form(...),
             ingestor=Ingestion(
                 docs=file_path
             )
-            ingestor.partition()
-            ingestor.chunkdocs()
-            final_docs=ingestor.document()
+            await ingestor.partition()
+            final_docs=await ingestor.chunking()
             db=await ingestor.embedding(final_docs)
-            await agent_module.vector_store.aadd_documents(final_docs)
+            # await agent_module.vector_store.aadd_documents(final_docs)
             question = f"{question}\n\n[System: The user attached a file. It has been ingested into the Chroma Vector Database. Use your Retrieval tools to search it.]"
 
     initial_ques={"question":[HumanMessage(content=(question))]}
