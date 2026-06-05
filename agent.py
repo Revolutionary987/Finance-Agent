@@ -143,7 +143,7 @@ async def grade(state: RAGSubGraph):
     for i in range(len(docs)):
         result = await grading_chain.ainvoke({
             "question": current_question, 
-            "docs": docs[i].page_content,
+            "docs": docs_string,
             "format_instructions": docs_parser.get_format_instructions()
         })
     filtered_docs = []

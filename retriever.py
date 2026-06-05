@@ -40,19 +40,34 @@ class Retriever:
             # Instead of a list of strings, use a list of dictionaries detailing the metadata
             metadata_field_info = [
                 {
-                    "name": "doc_category",
-                    "description": "Category of the document (e.g., 'finance'). STRICT RULE: Do NOT use 'contain'. Use 'eq' or 'ilike'.",
+                    "name": "company",
+                    "description": "The name of the company (e.g., 'Apple Inc.'). STRICT RULE: Use 'eq' or 'ilike'. Do NOT use 'contain'.",
                     "type": "string",
                 },
                 {
-                    "name": "ticker",
-                    "description": "Stock ticker symbol. STRICT RULE: Do NOT use 'contain'. Use 'eq' or 'ilike'.",
+                    "name": "document_type",
+                    "description": "The type of SEC filing (e.g., '10-K', '10-Q'). STRICT RULE: Use 'eq' or 'ilike'.",
                     "type": "string",
                 },
                 {
-                    "name": "year",
-                    "description": "The year the document was filed.",
-                    "type": "integer",
+                    "name": "financial_period_end",
+                    "description": "The date the financial quarter ended, in YYYY-MM-DD format. You can use 'gt', 'lt', or 'eq' to filter date ranges.",
+                    "type": "string",
+                },
+                {
+                    "name": "legally_filed_date",
+                    "description": "The date the document was legally filed to the public, in YYYY-MM-DD format. You can use 'gt', 'lt', or 'eq' to filter date ranges.",
+                    "type": "string",
+                },
+                {
+                    "name": "type",
+                    "description": "The structure of the data. Strictly either 'text' for paragraphs or 'table' for financial grids.",
+                    "type": "string",
+                },
+                {
+                    "name": "section",
+                    "description": "The specific SEC document section title (e.g., 'Risk Factors', 'Item 8'). STRICT RULE: Use 'ilike' for partial matches. Do NOT use 'contain'.",
+                    "type": "string",
                 }
             ]
             strict_document_prompt = (
