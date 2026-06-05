@@ -16,6 +16,7 @@ class Ingestion:
         self.docs=file_path
         self.chunks=[]
         self.elements=[]
+        self.metadata = {}
         self.model=ChatGroq(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
 
     @traceable(name="Partitioning")
