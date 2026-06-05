@@ -102,7 +102,18 @@ class BatchGrader(BaseModel):
 async def grade(state: RAGSubGraph):
     question = state["question"]
     current_question = question[-1].content
-    docs = state["retrieved"]
+    
+    # 1. Safely extract documents with an explicit fallback check
+    docs = state.get("retrieved", [])
+    if docs is None:
+        docs = []
+        
+    # 2. Strict Guard Clause: If the list is empty, exit immediately
+    if not docs or len(docs) == 0:
+        print("[DIAGNOSTIC] Guard Clause Activated: 0 documents found. Skipping grader completely.")
+        return {"structured_out": []}
+
+    # 3. Build document representation strings safely
     docs_string = ""
     for i, doc in enumerate(docs):
         docs_string += f"\n<doc id='{i}'>\n{doc.page_content}\n</doc>\n"
@@ -136,20 +147,36 @@ async def grade(state: RAGSubGraph):
         ("human", human_prompt)
     ])
 
-    # structured_grader = simple_task_llm.with_structured_output(retrieved_docs)
     grading_chain = grade_prompt | simple_llm | docs_parser
     
     filtered_docs = []
-    result = await grading_chain.ainvoke({
+    
+    try:
+        result = await grading_chain.ainvoke({
             "question": current_question, 
             "docs_string": docs_string,
             "format_instructions": docs_parser.get_format_instructions()
         })
-    # result.evaluations is a list that contains document id and binary_score of each chunk or document
-    for evaluation in result.evaluations:
-        print(f"[DIAGNOSTIC] Grader evaluated doc {evaluation.doc_id}: {evaluation.binary_score.upper()}")
-        if evaluation.binary_score.lower().strip() == "pass":
-            filtered_docs.append(docs[evaluation.doc_id])
+        
+        # 4. Enforce strict index validation inside loop boundaries
+        for evaluation in result.evaluations:
+            try:
+                doc_id = int(evaluation.doc_id)
+                print(f"[DIAGNOSTIC] Grader evaluated doc {doc_id}: {evaluation.binary_score.upper()}")
+                
+                # Double check that the index physically exists within the current active list bounds
+                if 0 <= doc_id < len(docs):
+                    if evaluation.binary_score.lower().strip() == "pass":
+                        filtered_docs.append(docs[doc_id])
+                else:
+                    print(f"[WARNING] LLM returned doc_id {doc_id}, but current list size is only {len(docs)}. Skipping out-of-bounds index.")
+            except (ValueError, TypeError):
+                print(f"[WARNING] LLM returned an invalid non-integer doc_id: {evaluation.doc_id}. Skipping parsing.")
+                
+    except Exception as e:
+        print(f"[ERROR] Ingestion grading chain failed: {e}. Defaulting to empty context window.")
+        return {"structured_out": []}
+            
     return {"structured_out": filtered_docs}
 
 async def examiner(state: RAGSubGraph) -> Literal["Rewrite","Generate answer"]:
