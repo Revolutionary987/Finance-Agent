@@ -13,6 +13,7 @@ from langchain_classic.retrievers import SelfQueryRetriever
 from langchain_groq import ChatGroq
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.structured_query import Comparator
+from langchain_core.documents import Document
 
 class AttributeInfo(BaseModel):
     name: str
@@ -111,5 +112,29 @@ class Retriever:
             print("Error: Vector Database not connected.")
             return {"documents":[]}
         raw_docs = await self.master_retriever.ainvoke(user_query, config=config)
-        return {"documents":raw_docs}
+        hierarchical_docs = []
+        # To get parent content from the chunking 
+        for doc in raw_docs:
+            parent_context = doc.metadata.get("parent_context")
+            # we are creating langchain docs so we can get send the parent chunk to the llm 
+            # when retriever is invoked langchain gets child chunks in langchain docs format but we need to pass the parent chunks so we loop through it find the parent content and create the langchain docs of the parent chunk 
+            if parent_context:
+                expanded_doc = Document(
+                    page_content=parent_context,
+                    metadata=doc.metadata
+                )
+                hierarchical_docs.append(expanded_doc)
+            else:
+                hierarchical_docs.append(doc)
+                
+        # Ensuring that there aren't identical parent pages multiple times 
+        seen_contents = set()
+        unique_docs = []
+        for doc in hierarchical_docs:
+            if doc.page_content not in seen_contents:
+                seen_contents.add(doc.page_content)
+                unique_docs.append(doc)
+                
+        return {"documents": unique_docs}
+
     
