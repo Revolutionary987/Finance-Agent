@@ -88,7 +88,8 @@ async def retriever_graph(state: RAGSubGraph):
     current_query = query[-1].content
     search_results = await retriever.search(current_query,config=config)
     print(f"\n[DIAGNOSTIC] Retriever found {len(search_results['documents'])} documents in the database.")
-    
+    for i, doc in enumerate(search_results['documents']):
+        print(f"  Doc {i}: {doc.page_content[:200]}")
     return {"retrieved": search_results["documents"]}
 
 class DocumentGrade(BaseModel):
@@ -120,12 +121,18 @@ async def grade(state: RAGSubGraph):
         docs_string += f"\n<doc id='{i}'>\n{doc.page_content}\n</doc>\n"
 
     
-    system_prompt = """You are a strict relevance filter. 
-    You will be given a list of documents. Evaluate EACH document individually to see if it contains ANY numbers, metrics, or keywords that could help answer the user's question.
-    
+    system_prompt = """You are a strict relevance filter for SEC 10-K financial queries.
+
     RULES:
-    - If the document contains relevant financial data, grade it 'pass'.
-    - If it is completely off-topic, grade it 'fail'.
+    - Grade 'pass' ONLY if the document chunk contains specific data that DIRECTLY answers the user's question.
+    - A chunk that merely mentions the same company, year, or general topic is NOT sufficient — grade it 'fail'.
+    - A chunk must contain actual numbers, figures, or explicit statements relevant to the specific question asked.
+
+    EXAMPLES:
+    Question: "What was the aggregate market value of non-affiliate stock as of March 26, 2021?"
+    - PASS: A chunk containing "aggregate market value... $X billion as of March 26, 2021"
+    - FAIL: A chunk saying "2021 Form 10-K" or "fiscal year 2021 annual report"
+    - FAIL: A chunk about revenue, expenses, or any other financial metric not asked about
     """
 
     human_prompt = """
@@ -190,6 +197,14 @@ async def gen_answer(state: RAGSubGraph):
     system_prompt = """You are Aegis, an elite financial auditor. 
     Your task is to generate answer to the user's question based on retrieved SEC 10-K document chunks.
     Don't add any extra information give the answer strictly on the basis of the retrieved chunks or if you can't find the required resource just print I couldn't find the solution
+
+    STRICT RULES:
+    1. Answer ONLY using exact figures and text found in the retrieved document chunks below.
+    2. If the retrieved chunks do NOT contain the specific number, date, or fact being asked about, 
+    you MUST respond with EXACTLY: "The retrieved documents do not contain the specific data needed to answer this question."
+    3. NEVER infer, estimate, or paraphrase figures that aren't explicitly stated.
+    4. NEVER mention the fiscal year or any metadata unless it directly answers the question.
+    5. Quote exact numbers when found: "$X.XX billion" not "several billion dollars".
     """
     
     human_prompt = """
@@ -291,7 +306,21 @@ async def answer_check(state: RAGSubGraph):
     system_prompt = """
     You are Aegis, an expert finance auditor
     You task is to evaluate the generated answer strictly based on the question 
-    return 'sufficient' if it exactly answers the question else 'not sufficient'
+    
+    Return 'sufficient' ONLY if ALL of these conditions are met:
+    1. The answer contains the SPECIFIC data point asked for (exact numbers, dates, dollar amounts).
+    2. The answer does NOT deflect with phrases like "the document mentions", "the fiscal year is", or "I couldn't find".
+    3. The answer directly and completely responds to what was asked.
+
+    Return 'not sufficient' if:
+    - The answer is vague, generic, or talks about the document structure instead of the data.
+    - The answer mentions a year/company name but not the specific metric requested.
+    - The answer says it couldn't find the information.
+
+    EXAMPLE:
+    Question: "What was the aggregate market value of non-affiliate stock as of March 26, 2021?"
+    SUFFICIENT answer: "The aggregate market value was $47.3 billion as of March 26, 2021."
+    NOT SUFFICIENT: "The document is a 2021 Form 10-K filing." ← This is a deflection, reject it.
     
     CRITICAL INSTRUCTION: You are a backend data processor. You MUST output strictly and ONLY valid JSON. 
     Do NOT output any conversational text, preamble, or markdown blocks.
@@ -345,7 +374,7 @@ async def rewrite_query(state: RAGSubGraph):
                 "answer": failure_msg, 
                 "rewritten": rewritten_count + 1
         }
-    original_user_question = question[0].content
+    original_user_question = question[-1].content
     history_logs = []
     if len(question) > 1:
         for msg in question[1:]:
