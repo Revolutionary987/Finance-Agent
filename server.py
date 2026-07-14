@@ -15,8 +15,6 @@ from contextlib import asynccontextmanager
 from agent import graph
 from fastapi.middleware.cors import CORSMiddleware
 from ingestion import Ingestion
-import agent as agent_module
-from retriever import Retriever
 from langchain_core.tracers.context import tracing_v2_enabled
 
 
@@ -30,7 +28,7 @@ agent=None
 @traceable
 @asynccontextmanager
 
-async def lifespan(FastAPI):
+async def lifespan(app:FastAPI):
     global agent
     await pool.open()
     memory = AsyncPostgresSaver(pool)
@@ -82,6 +80,9 @@ async def restarting(question: str = Form(...),
     initial_ques={"question":[HumanMessage(content=(question))]}
     with tracing_v2_enabled(project_name="Aegis"):
         state=await agent.ainvoke(initial_ques,config=config)
+    # Query current thread runtime metadata to find out what node is up next
+    current_state_info = await agent.aget_state(config)
+    is_paused = "hitl" in (current_state_info.next or [])
     # same as .get function of dictionary
     messages_display=state.get("output","Drafting the answer")
     raw_docs = state.get("documents", [])
@@ -117,8 +118,10 @@ async def receivefeedback(feedback:Feedbackrequest):
                 ,as_node="hitl")
             
         final_state = await agent.ainvoke(None, config=config)
+        updated_state_info = await agent.aget_state(config)
+        still_paused = "hitl" in (updated_state_info.next or [])
         return {
-                "status": "success",
+                "status": "awaiting_further_approval" if still_paused else "success",
                 "final_output": final_state.get("output", "No final output generated.")
             }
     except Exception as e:
