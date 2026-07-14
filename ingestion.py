@@ -14,6 +14,7 @@ from langchain_docling import DoclingLoader
 from docling.chunking import HybridChunker
 from transformers import AutoTokenizer
 from docling.document_converter import DocumentConverter
+from langchain_openai import OpenAIEmbeddings
 
 class Ingestion:
     def __init__ (self, file_path):
@@ -162,14 +163,10 @@ class Ingestion:
         return self.chunks
     @traceable(name="embeddings")
     async def embedding(self):
-        model_name="BAAI/bge-m3"
-        model_kwargs={"device":"cpu"}
-        encode_kwargs={"normalize_embeddings":True}
-        embedding_model=HuggingFaceEmbeddings(
-            model_name=model_name,
-            model_kwargs=model_kwargs,
-            encode_kwargs=encode_kwargs
-        )
+        embedding_model = OpenAIEmbeddings(
+        model="text-embedding-3-small",
+        openai_api_key=os.environ.get("OPENAI_API_KEY") 
+)
         raw_url = os.getenv("DATABASE_URL")
         if not raw_url:
             raise ValueError("DATABASE_URL environment variable is missing!")
