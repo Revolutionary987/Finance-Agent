@@ -126,10 +126,6 @@ async def grade(state: RAGSubGraph):
     RULES:
     - If the document contains relevant financial data, grade it 'pass'.
     - If it is completely off-topic, grade it 'fail'.
-    
-    CRITICAL INSTRUCTION: You MUST output strictly valid JSON matching the format instructions. Evaluate every document provided.
-    
-    {format_instructions}
     """
 
     human_prompt = """
