@@ -2,7 +2,7 @@ import os
 from dotenv import load_dotenv
 from langsmith import traceable
 load_dotenv()
-
+import re
 from langchain_postgres import PGVector
 from langgraph.graph import StateGraph, START, END
 from typing import TypedDict, Annotated, List, Literal
@@ -36,7 +36,10 @@ beast = ChatOpenAI(base_url="https://api.sambanova.ai/v1",api_key=os.getenv("SAM
 slm_endpoint = HuggingFaceEndpoint(repo_id="meta-llama/Llama-3.1-8B-Instruct",task="text-generation",max_new_tokens=150,huggingfacehub_api_token=os.getenv("HF_TOKEN"))
 simple_llm = ChatHuggingFace(llm=slm_endpoint)
 
-DB_URL = os.getenv("DATABASE_URL")
+raw_url= os.getenv("DATABASE_URL")
+if not raw_url:
+    raise ValueError("DATABASE_URL environment variable is missing!")
+DB_URL = re.sub(r"^postgres(ql)?://", "postgresql+psycopg://", raw_url.strip())
 model_name="BAAI/bge-m3"
 model_kwargs={"device":"cpu"}
 encode_kwargs={"normalize_embeddings":True}
@@ -278,7 +281,7 @@ async def hal_check(state: RAGSubGraph):
     
     return {"hallucination": result.hallucination}
 
-async def check_hallucination(state: RAGSubGraph) -> Literal["Generate answer", "Answer check"]:
+async def check_hallucination(state: RAGSubGraph) -> Literal["Generate answer", "Answer check","Rewrite"]:
     if state["hallucination"] == "Hallucination":
         print(f"\n[DIAGNOSTIC] HAL_CHECK: Grade was '{state['hallucination']}' (Attempt {state.get('generation_attempts', 0)})")
         if state.get("generation_attempts", 0) >= 3:
