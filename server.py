@@ -75,7 +75,6 @@ async def restarting(question: str = Form(...),
                 file_path=file_path
             )
             await ingestor.partition()
-            await ingestor.chunking()
             await ingestor.embedding()
             # await agent_module.vector_store.aadd_documents(final_docs)
             question = f"{question}\n\n[System: The user attached a file. It has been ingested into the Chroma Vector Database. Use your Retrieval tools to search it.]"
