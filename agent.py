@@ -237,8 +237,6 @@ async def hal_check(state: RAGSubGraph):
     CRITICAL INSTRUCTION: You are a backend data processor. You MUST output strictly and ONLY valid JSON. 
     Do NOT output any conversational text, preamble, or markdown blocks.
     
-    {format_instructions}
-    
     EXAMPLE OUTPUT:
     {{"reasoning": "The revenue numbers match the text.", "hallucination": "No Hallucination"}}
     """
@@ -297,9 +295,6 @@ async def answer_check(state: RAGSubGraph):
     
     CRITICAL INSTRUCTION: You are a backend data processor. You MUST output strictly and ONLY valid JSON. 
     Do NOT output any conversational text, preamble, or markdown blocks.
-    
-    {format_instructions}
-    
     EXAMPLE OUTPUT:
     {{"scoring": "sufficient"}}
 
