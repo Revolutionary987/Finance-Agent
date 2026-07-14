@@ -22,6 +22,7 @@ from langchain_huggingface import HuggingFaceEndpoint, ChatHuggingFace
 from langchain_core.output_parsers import PydanticOutputParser
 from langchain_huggingface import HuggingFaceEmbeddings
 from langchain_core.runnables import RunnableConfig
+from langchain_openai import OpenAIEmbeddings
 
 session_thread_id = str(uuid.uuid4())
 config = {"configurable": {"thread_id": session_thread_id}}
@@ -33,20 +34,15 @@ reserve_primary=ChatOpenAI(model="llama-3.3-70b", api_key=os.getenv("CEREBRAS_AP
 # simple_task_llm = simple_reserve2.with_fallbacks([simple_reserve1])
 primary_llm = primary_llm.with_fallbacks([reserve_primary])
 beast = ChatOpenAI(base_url="https://api.sambanova.ai/v1",api_key=os.getenv("SAMBANOVA_API_KEY"),model="Meta-Llama-3.3-70B-Instruct", temperature=0)
-slm_endpoint = HuggingFaceEndpoint(repo_id="meta-llama/Llama-3.1-8B-Instruct",task="text-generation",max_new_tokens=150,huggingfacehub_api_token=os.getenv("HF_TOKEN"))
-simple_llm = ChatHuggingFace(llm=slm_endpoint)
+simple_llm=ChatOpenAI(model="gpt-4.1-nano",temperature=0)
 
 raw_url= os.getenv("DATABASE_URL")
 if not raw_url:
     raise ValueError("DATABASE_URL environment variable is missing!")
 DB_URL = re.sub(r"^postgres(ql)?://", "postgresql+psycopg://", raw_url.strip())
-model_name="BAAI/bge-m3"
-model_kwargs={"device":"cpu"}
-encode_kwargs={"normalize_embeddings":True}
-embedding_model=HuggingFaceEmbeddings(
-        model_name=model_name,
-        model_kwargs=model_kwargs,
-        encode_kwargs=encode_kwargs,
+embedding_model=OpenAIEmbeddings(
+    model="text-embedding-3-small",
+    openai_api_key=os.environ.get("OPENAI_API_KEY")
 )
 
 vector_store = PGVector(
@@ -102,6 +98,8 @@ class DocumentGrade(BaseModel):
 class BatchGrader(BaseModel):
     evaluations: List[DocumentGrade] = Field(description="List of evaluations for all provided documents")
 
+structured_grader = simple_llm.with_structured_output(BatchGrader)
+
 async def grade(state: RAGSubGraph):
     question = state["question"]
     current_question = question[-1].content
@@ -113,7 +111,7 @@ async def grade(state: RAGSubGraph):
         
     # 2. Strict Guard Clause: If the list is empty, exit immediately
     if not docs or len(docs) == 0:
-        print("[DIAGNOSTIC] Guard Clause Activated: 0 documents found. Skipping grader completely.")
+        print("0 documents found.")
         return {"structured_out": []}
 
     # 3. Build document representation strings safely
@@ -121,7 +119,6 @@ async def grade(state: RAGSubGraph):
     for i, doc in enumerate(docs):
         docs_string += f"\n<doc id='{i}'>\n{doc.page_content}\n</doc>\n"
 
-    docs_parser = PydanticOutputParser(pydantic_object=BatchGrader)
     
     system_prompt = """You are a strict relevance filter. 
     You will be given a list of documents. Evaluate EACH document individually to see if it contains ANY numbers, metrics, or keywords that could help answer the user's question.
@@ -150,22 +147,21 @@ async def grade(state: RAGSubGraph):
         ("human", human_prompt)
     ])
 
-    grading_chain = grade_prompt | simple_llm | docs_parser
+    grading_chain = grade_prompt | structured_grader 
     
     filtered_docs = []
     
     try:
         result = await grading_chain.ainvoke({
             "question": current_question, 
-            "docs_string": docs_string,
-            "format_instructions": docs_parser.get_format_instructions()
+            "docs_string": docs_string
         })
         
         # 4. Enforce strict index validation inside loop boundaries
         for evaluation in result.evaluations:
             try:
                 doc_id = int(evaluation.doc_id)
-                print(f"[DIAGNOSTIC] Grader evaluated doc {doc_id}: {evaluation.binary_score.upper()}")
+                print(f"Grader evaluated doc {doc_id}: {evaluation.binary_score.upper()}")
                 
                 # Double check that the index physically exists within the current active list bounds
                 if 0 <= doc_id < len(docs):
@@ -184,10 +180,8 @@ async def grade(state: RAGSubGraph):
 
 async def examiner(state: RAGSubGraph) -> Literal["Rewrite","Generate answer"]:
     if len(state["structured_out"]) > 0:
-        print("[DIAGNOSTIC] ---> GENERATE ANSWER")
         return "Generate answer"
     else:
-        print("[DIAGNOSTIC] ---> REWRITE")
         return "Rewrite"
     
 async def gen_answer(state: RAGSubGraph):
@@ -232,11 +226,12 @@ class HallucinationGrading(BaseModel):
     reasoning: Annotated[str, Field(description="Brief explanation of why the answer is or is not hallucinated.")]
     hallucination: Annotated[str, Field(description="Strictly output 'Hallucination' or 'No Hallucination'.")]
 
+structured_hallucination_checker = simple_llm.with_structured_output(HallucinationGrading)
+
 async def hal_check(state: RAGSubGraph):
     answer = state["answer"]
     possible_ans = state["structured_out"]
     context_string = "\n\n---\n\n".join([doc.page_content for doc in possible_ans])
-    hal_parser = PydanticOutputParser(pydantic_object=HallucinationGrading)
 
     system_prompt = """You are a strict auditor evaluating an AI-generated report. 
     Your only task is to determine whether the generated answer is entirely grounded in the provided source documents.
@@ -271,12 +266,11 @@ async def hal_check(state: RAGSubGraph):
         ("human", human_prompt)
     ])
     
-    gen_cycle = generation | simple_llm | hal_parser
+    gen_cycle = generation | structured_hallucination_checker
     
     result = await gen_cycle.ainvoke({
         "documents": context_string,
-        "answer": answer,
-        "format_instructions": hal_parser.get_format_instructions()
+        "answer": answer
     })
     
     return {"hallucination": result.hallucination}
@@ -294,12 +288,11 @@ async def check_hallucination(state: RAGSubGraph) -> Literal["Generate answer", 
 class cond_answer(BaseModel):
     "Binary score for the generated answer"
     scoring: Annotated[str, Field(description="Return strictly 'sufficient' if the generated answer correctly answers the question else 'not sufficient'")]
-
+structured_answer_validator = simple_llm.with_structured_output(cond_answer)
 async def answer_check(state: RAGSubGraph):
     answer = state["answer"]
     question = state["question"]
     current_question = question[-1].content
-    ans_parser = PydanticOutputParser(pydantic_object=cond_answer)
 
     system_prompt = """
     You are Aegis, an expert finance auditor
@@ -333,12 +326,11 @@ async def answer_check(state: RAGSubGraph):
     ])
     
     # structured_out = simple_llm.with_structured_output(cond_answer)
-    gen_out = prompt | simple_llm | ans_parser
+    gen_out = prompt | structured_answer_validator
     
     result = await gen_out.ainvoke({
         "answer": answer,
-        "question": current_question,
-        "format_instructions": ans_parser.get_format_instructions()
+        "question": current_question
     })
     return {"is_sufficient": result.scoring}
 
@@ -355,7 +347,6 @@ class RewrittenQuery(BaseModel):
 async def rewrite_query(state: RAGSubGraph):
     question = state["question"]
     rewritten_count=state.get("rewritten",0)
-    current_org_ques = question[-(rewritten_count + 1)].content
     print(f"\n[DIAGNOSTIC] REWRITE: Triggered! (Count: {state.get('rewritten', 0)})")
     if rewritten_count >= 4:
         failure_msg = "Aegis audited the SEC filings multiple times but could not find the specific financial data required to answer this query."
@@ -363,6 +354,13 @@ async def rewrite_query(state: RAGSubGraph):
                 "answer": failure_msg, 
                 "rewritten": rewritten_count + 1
         }
+    original_user_question = question[0].content
+    history_logs = []
+    if len(question) > 1:
+        for msg in question[1:]:
+            prefix = "Feedback Loop Log" if "Human Feedback" in msg.content else "Previous Rewrite Attempt"
+            history_logs.append(f"- {prefix}: '{msg.content}'")
+    chat_history_string = "\n".join(history_logs) if history_logs else "No previous execution context."
     system_prompt = """You are Aegis, an elite financial researcher and query optimization expert.
     Your task is to take a user's question and rewrite it to be highly optimized for semantic vector search across SEC 10-K filings.
     
@@ -378,6 +376,8 @@ async def rewrite_query(state: RAGSubGraph):
     """
     
     human_prompt = """
+    Previous Conversation History:
+    {chat_history}
     The previous search failed to find relevant financial documents. We need a better query.
 
     Here is the user's original question:
@@ -396,7 +396,8 @@ async def rewrite_query(state: RAGSubGraph):
     structured_out = primary_llm.with_structured_output(RewrittenQuery)
     gen_ans = prompt | structured_out
     result = await gen_ans.ainvoke({
-            "question": current_org_ques
+            "chat_history": chat_history_string,
+            "question": original_user_question
         })
     print(f"[DIAGNOSTIC] New Search Query: {result.new_query}")
     return {"question": [HumanMessage(content=result.new_query)],"rewritten":rewritten_count+1}
