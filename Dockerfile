@@ -17,11 +17,17 @@ RUN apt-get update && apt-get install -y \
     tesseract-ocr \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy requirements and install them
+# Copy requirements file first
 COPY ./requirements.txt /code/requirements.txt
-RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir -r /code/requirements.txt
 
+# 🚀 STEP 1: Upgrade pip and force-install clean, CPU-only PyTorch variants
+RUN pip install --no-cache-dir --upgrade pip
+RUN pip install --no-cache-dir torch torchvision --index-url https://download.pytorch.org/whl/cpu
+
+# 🚀 STEP 2: Install your lean requirements (Pip will see Torch is satisfied and skip GPU binaries!)
+RUN pip install --no-cache-dir -r /code/requirements.txt
+
+# Pre-download the BAAI/bge-m3 embedding model weights into the image layer
 RUN python -c "from langchain_huggingface import HuggingFaceEmbeddings; HuggingFaceEmbeddings(model_name='BAAI/bge-m3', model_kwargs={'device': 'cpu'}, encode_kwargs={'normalize_embeddings': True})"
 
 # Download the spaCy model directly into the container image
