@@ -14,6 +14,7 @@ from langchain_groq import ChatGroq
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.structured_query import Comparator
 from langchain_core.documents import Document
+from langchain_postgres import PGVectorTranslator
 
 class AttributeInfo(BaseModel):
     name: str
@@ -84,6 +85,7 @@ class Retriever:
                 vectorstore=vector_db,
                 document_contents=strict_document_prompt,
                 metadata_field_info=metadata_field_info,
+                structured_query_translator=PGVectorTranslator(),
                 allowed_comparators=pgvector_comparators,
     )
             if langchain_documents and len(langchain_documents) > 0:
