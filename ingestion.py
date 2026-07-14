@@ -1,20 +1,19 @@
 import os
 from dotenv import load_dotenv
+from langchain_text_splitters import RecursiveCharacterTextSplitter
 from langsmith import traceable
 load_dotenv()
 import tempfile
 import uuid
 import re
-from unstructured.partition.html import partition_html
-from unstructured.cleaners.core import clean_extra_whitespace
 from langchain_groq import ChatGroq
 from langchain_core.documents import Document
 from langchain_huggingface import HuggingFaceEmbeddings
-from unstructured.chunking.title import chunk_by_title
 from langchain_postgres import PGVector
 from langchain_docling import DoclingLoader
 from docling.chunking import HybridChunker
 from transformers import AutoTokenizer
+from docling.document_converter import DocumentConverter
 
 class Ingestion:
     def __init__ (self, file_path):
@@ -25,7 +24,11 @@ class Ingestion:
         self.MODEL_ID="BAAI/bge-m3"
         self.tokenizer=AutoTokenizer.from_pretrained(self.MODEL_ID)
         self.model=ChatGroq(model="meta-llama/llama-4-scout-17b-16e-instruct", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
-    
+        self.child_splitter = RecursiveCharacterTextSplitter.from_huggingface_tokenizer(
+            self.tokenizer,
+            chunk_size=256,
+            chunk_overlap=32,
+        )
     async def extract_metadata(self,raw_text):
         metadata={
             "Company_Name":"Unknown",
@@ -61,7 +64,12 @@ class Ingestion:
         if doc_type:
             metadata["Doc_type"]=doc_type.group(1).strip()
         return metadata
-    
+    # @staticmethod means this function is a utility helper. It doesn't modify or read any instance variables inside your main class.It just takes a chunk, processes it, and returns a result.
+    # chunk is a raw DocChunk object yielded by Docling's HybridChunker.
+    @staticmethod
+    def _doc_item_refs(chunk):
+        # It loops through every chunk produced by docling. For every element, it grabs its unique address path (item.self_ref) and packs it into a Python set.
+        return {item.self_ref for item in chunk.meta.doc_items}
 # it does remove html tags and then converts the content into texts like Title,Table etc on seeing the html tag
     async def extract_html_and_meta(self,file_path):
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -97,31 +105,36 @@ class Ingestion:
             # see we get output in langchain docs only but the docs will be in this format {"source":"some_random.html"} that html will be deleted 
             # so we won't get the detailed metadata if we wanna pass the content only we can load the loader but to get the metadata we should create langchain docs again with the content from here and attach the metadata
             # also LangChain Document metadata fields are completely immutable (read-only)
-            parent_loader = DoclingLoader(
-                file_path=temp_file_path,
-                export_type="markdown", 
-                chunker=HybridChunker(tokenizer=self.tokenizer, max_tokens=2048)
-            )
-            parent_chunks = parent_loader.load()
-            # Used 256 tokens to dense vectors sharp and get the exact answers
-            child_chunker = HybridChunker(tokenizer=self.tokenizer, max_tokens=256)
-            
+            converter = DocumentConverter()
+            dl_doc = converter.convert(temp_file_path).document
+            parent_chunker = HybridChunker(tokenizer=self.tokenizer, max_tokens=2048)
+            parent_chunks = list(parent_chunker.chunk(dl_doc))
+            child_chunks = None
+            try:
+                child_chunker = HybridChunker(tokenizer=self.tokenizer, max_tokens=256)
+                # chunker.chunk returns a generator obj for easier looping and debugging we make it as a list
+                child_chunks = list(child_chunker.chunk(dl_doc))
+            except Exception as e:
+                print(f"falling back to RecursiveCharacterTextSplitter for this document: {e}")
             for p_chunk in parent_chunks:
-                
-                # Create a unique id or thread id for parent 
                 parent_id = str(uuid.uuid4())
-
-                # We use docling's internal metadata which contains geometry and parsing tokens ,bounding boxes, internal heading hierarchical keys, and document font weights to get the required docs then we pass the exact tokens found to the parent chunk and then parent chunks uses that precise data and sends it with relevant data which was 2000 tokens which was divided among the chilf chunks to the llm to give it better context
-                child_text_segments = child_chunker.chunk(p_chunk.metadata.get("dl_meta", p_chunk.page_content)) 
-                    
-                # checks whether the content is in list format
-                # Docling return structures vary by package versions (Flat List vs. Lazy Streaming Generators).
-                # This check ensures downstream loops evaluate clean string lists instead of crashing on un-iterable data.
-                if isinstance(child_text_segments, list):
-                     segments = [str(s) for s in child_text_segments]
+                # contextualize( )converts chunks into a standard Markdown string.
+                parent_text = parent_chunker.contextualize(p_chunk)
+ 
+                segments = []
+                if child_chunks is not None:
+                    # this lines stores all the parent ids we created into parent_refs
+                    parent_refs = self._doc_item_refs(p_chunk)
+                    # checks whether the child ids are subset of parent ids so that we can map the child chunks exactly to the parent chunks 
+                    matching_children = [c for c in child_chunks if self._doc_item_refs(c) <= parent_refs]
+                    if matching_children:
+                        segments = [child_chunker.contextualize(c) for c in matching_children]
+                    else:
+                        print("no child chunks falling back to text splitter for this parent.")
+                        segments = self.child_splitter.split_text(parent_text)
                 else:
-                     # Fallback it returns first 1000 tokens from parent chunks with sliding window of 200 
-                    segments = [p_chunk.page_content[i:i+1000] for i in range(0, len(p_chunk.page_content), 800)]
+                    segments = self.child_splitter.split_text(parent_text)
+ 
                 # checking for markdown tables
                 for segment in segments:
                     chunk_type = "table" if "|" in segment and "---" in segment else "text"
@@ -130,7 +143,7 @@ class Ingestion:
                             page_content=segment,
                             metadata={
                                 "parent_id": parent_id,
-                                "parent_context": p_chunk.page_content,
+                                "parent_context": parent_text,
                                 "company": self.metadata.get("Company_Name", "Unknown"),
                                 "document_type": self.metadata.get("Doc_type", "Unknown"),
                                 "financial_period_end": self.metadata.get("Expired_date", "Unknown"),
@@ -158,20 +171,16 @@ class Ingestion:
             encode_kwargs=encode_kwargs
         )
         raw_url = os.getenv("DATABASE_URL")
-        RENDER_DB_URL = raw_url.replace("postgres://", "postgresql+psycopg://")
-        if raw_url.startswith("postgresql://"):
-            RENDER_DB_URL = raw_url.replace("postgresql://", "postgresql+psycopg://")
-        elif raw_url.startswith("postgres://"):
-            RENDER_DB_URL = raw_url.replace("postgres://", "postgresql+psycopg://")
-        else:
-            RENDER_DB_URL = raw_url
+        if not raw_url:
+            raise ValueError("DATABASE_URL environment variable is missing!")
+        ASYNC_DB_URL = re.sub(r"^postgres(ql)?://", "postgresql+psycopg://", raw_url.strip())
         vector_db = PGVector(
                 embeddings=embedding_model,
                 collection_name="aegis_db",
-                connection=RENDER_DB_URL,
+                connection=ASYNC_DB_URL,
                 use_jsonb=True,
                 async_mode=True, 
         )
         if self.chunks:
             await vector_db.aadd_documents(self.chunks)     
-            return vector_db
+        return vector_db
