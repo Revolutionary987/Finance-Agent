@@ -181,6 +181,14 @@ class Ingestion:
                 use_jsonb=True,
                 async_mode=True, 
         )
-        if self.chunks:
-            await vector_db.aadd_documents(self.chunks)     
+        if not self.chunks:
+            raise FileNotFoundError("Couldn't find the chunks")
+        batch_size = 100
+        for i in range(0, len(self.chunks), batch_size):
+            batch = self.chunks[i : i + batch_size]
+            try:
+            # Upload a single controlled batch block
+                await vector_db.aadd_documents(batch)
+            except Exception as e:
+                raise e   
         return vector_db
