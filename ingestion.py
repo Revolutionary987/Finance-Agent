@@ -71,6 +71,20 @@ class Ingestion:
     def _doc_item_refs(chunk):
         # It loops through every chunk produced by docling. For every element, it grabs its unique address path (item.self_ref) and packs it into a Python set.
         return {item.self_ref for item in chunk.meta.doc_items}
+    @staticmethod
+    def clean_sec_noise(text: str) -> str:
+        """
+        Strips out structural parsing fragments, XML/XBRL inline tags,
+        and collapses broken whitespace patterns.
+        """
+        # Remove specific table artifact noise like ", 1 = . , 2 = ."
+        text = re.sub(r'(?:,\s*\d+\s*=\s*[\.\s]*)+', ' ', text)
+        # Strip leftover broken equation or index markers like ", 1 = , 2 ="
+        text = re.sub(r',\s*\d+\s*=\s*', ' ', text)
+        # Collapse multiple consecutive spaces and newlines into clean single lines
+        text = re.sub(r'\n+', '\n', text)
+        text = re.sub(r'[ \t]+', ' ', text)
+        return text.strip()
 # it does remove html tags and then converts the content into texts like Title,Table etc on seeing the html tag
     async def extract_html_and_meta(self,file_path):
         with open(file_path, "r", encoding="utf-8", errors="ignore") as f:
@@ -138,13 +152,14 @@ class Ingestion:
  
                 # checking for markdown tables
                 for segment in segments:
-                    chunk_type = "table" if "|" in segment and "---" in segment else "text"
+                    cleaned_segment = self.clean_sec_noise(segment)
+                    chunk_type = "table" if "|" in cleaned_segment and "---" in cleaned_segment else "text"
                 
                     doc = Document(
-                            page_content=segment,
+                            page_content=cleaned_segment,
                             metadata={
                                 "parent_id": parent_id,
-                                "parent_context": parent_text,
+                                "parent_context": self.clean_sec_noise(parent_text),
                                 "company": self.metadata.get("Company_Name", "Unknown"),
                                 "document_type": self.metadata.get("Doc_type", "Unknown"),
                                 "financial_period_end": self.metadata.get("Expired_date", "Unknown"),
