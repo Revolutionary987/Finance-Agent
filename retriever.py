@@ -37,8 +37,7 @@ class Retriever:
         if vector_db is not None:
 
             self.vector_retriever=vector_db.as_retriever(search_kwargs={"k":5})
-            self.llm=ChatGroq(model="llama-3.3-70b-versatile", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
-
+            self.llm=ChatOpenAI(model="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY"),temperature=0)
             # Instead of a list of strings, use a list of dictionaries detailing the metadata
             metadata_field_info = [
                 {
