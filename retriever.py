@@ -112,16 +112,23 @@ class Retriever:
         if self.master_retriever is None:
             print("Error: Vector Database not connected.")
             return {"documents":[]}
-        raw_docs = await self.master_retriever.ainvoke(user_query, config=config)
+        try:
+            raw_docs = await self.master_retriever.ainvoke(user_query, config=config)
+        except Exception as e:
+            print(f"Self-Query parser failed ({e}) moving to similarity search")
+            # Bypass the query constructor and just do a raw similarity search
+            raw_docs = await self.vector_db.asimilarity_search(user_query, k=4)
         hierarchical_docs = []
         # To get parent content from the chunking 
         for doc in raw_docs:
             parent_context = doc.metadata.get("parent_context")
             # we are creating langchain docs so we can get send the parent chunk to the llm 
             # when retriever is invoked langchain gets child chunks in langchain docs format but we need to pass the parent chunks so we loop through it find the parent content and create the langchain docs of the parent chunk 
+            # If the metadata exists, use it; otherwise, use the child chunk as-is
+            content = parent_context if parent_context else doc.page_content
             if parent_context:
                 expanded_doc = Document(
-                    page_content=parent_context,
+                    page_content=content,
                     metadata=doc.metadata
                 )
                 hierarchical_docs.append(expanded_doc)
