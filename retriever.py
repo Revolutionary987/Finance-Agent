@@ -10,7 +10,7 @@ from langchain_classic.retrievers.document_compressors import CrossEncoderRerank
 from langchain_community.cross_encoders import HuggingFaceCrossEncoder
 from langchain_classic.retrievers.ensemble import EnsembleRetriever
 from langchain_classic.retrievers import SelfQueryRetriever
-from langchain_groq import ChatGroq
+from langchain_openai import ChatOpenAI
 from langchain_community.retrievers import BM25Retriever
 from langchain_core.structured_query import Comparator
 from langchain_core.documents import Document
