@@ -28,7 +28,7 @@ session_thread_id = str(uuid.uuid4())
 config = {"configurable": {"thread_id": session_thread_id}}
 #LLMS
 primary_llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
-reserve_primary=ChatOpenAI(model="llama-3.3-70b", api_key=os.getenv("CEREBRAS_API_KEY"), base_url="https://api.cerebras.ai/v1",temperature=0)
+reserve_primary=ChatOpenAI(model="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY"),temperature=0)
 # simple_reserve1=ChatOpenAI(base_url="https://api.sambanova.ai/v1",api_key=os.getenv("SAMBANOVA_API_KEY"),model="gemma-3-12b-it")
 # simple_reserve2= ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
 # simple_task_llm = simple_reserve2.with_fallbacks([simple_reserve1])
