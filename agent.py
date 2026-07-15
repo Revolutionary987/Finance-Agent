@@ -26,16 +26,16 @@ from langchain_openai import OpenAIEmbeddings
 
 session_thread_id = str(uuid.uuid4())
 config = {"configurable": {"thread_id": session_thread_id}}
-#LLMS
-primary_llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
+# #LLMS
+# primary_llm = ChatGroq(model="llama-3.3-70b-versatile", temperature=0,api_key=os.getenv("GROQ_API_KEY"))
 reserve_primary=ChatOpenAI(model="gpt-4o-mini", api_key=os.getenv("OPENAI_API_KEY"),temperature=0)
 # simple_reserve1=ChatOpenAI(base_url="https://api.sambanova.ai/v1",api_key=os.getenv("SAMBANOVA_API_KEY"),model="gemma-3-12b-it")
 # simple_reserve2= ChatGoogleGenerativeAI(model="gemini-2.5-flash", temperature=0)
 # simple_task_llm = simple_reserve2.with_fallbacks([simple_reserve1])
-primary_llm = primary_llm.with_fallbacks([reserve_primary])
+# primary_llm = primary_llm.with_fallbacks([reserve_primary])
 beast = ChatOpenAI(base_url="https://api.sambanova.ai/v1",api_key=os.getenv("SAMBANOVA_API_KEY"),model="Meta-Llama-3.3-70B-Instruct", temperature=0)
 simple_llm=ChatOpenAI(model="gpt-4.1-nano",temperature=0)
-
+primary_llm=reserve_primary
 raw_url= os.getenv("DATABASE_URL")
 if not raw_url:
     raise ValueError("DATABASE_URL environment variable is missing!")
