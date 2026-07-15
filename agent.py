@@ -442,7 +442,7 @@ async def rewrite_query(state: RAGSubGraph):
                 "answer": failure_msg, 
                 "rewritten": rewritten_count + 1
         }
-    original_user_question = state.get("original_question", question[0].content)
+    original_user_question = state.get("original_question", question[-1].content)
     history_logs = []
     if len(question) > 1:
         for msg in question[1:]:
