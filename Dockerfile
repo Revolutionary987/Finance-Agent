@@ -27,9 +27,6 @@ RUN pip install --no-cache-dir torch torchvision --index-url https://download.py
 # 🚀 STEP 2: Install your lean requirements (Pip will see Torch is satisfied and skip GPU binaries!)
 RUN pip install --no-cache-dir -r /code/requirements.txt
 
-# Pre-download the BAAI/bge-m3 embedding model weights into the image layer
-RUN python -c "from langchain_huggingface import HuggingFaceEmbeddings; HuggingFaceEmbeddings(model_name='BAAI/bge-m3', model_kwargs={'device': 'cpu'}, encode_kwargs={'normalize_embeddings': True})"
-
 # Download the spaCy model directly into the container image
 RUN python -m spacy download en_core_web_sm
 
