@@ -65,7 +65,8 @@ structured_llm = primary_llm.with_structured_output(Display)
 
 class RAGSubGraph(TypedDict):
     question: Annotated[List[BaseMessage], add_messages]
-    retrieved: List[str] 
+    retrieved: List[str]
+    original_question:str 
     draft: List[str]
     output: str
     grading: str
@@ -86,11 +87,16 @@ async def retriever_graph(state: RAGSubGraph):
     """The node calls the retriever function and retrieves the necessary documents"""
     query = state["question"]
     current_query = query[-1].content
+    original_q = state.get("original_question")
+    if not original_q:
+        original_q = current_query
+    print(f"\n[RETRIEVER] Original question: '{original_q}'")
+    print(f"\n[RETRIEVER] Searching with: '{current_query}'")
     search_results = await retriever.search(current_query,config=config)
     print(f"\n[DIAGNOSTIC] Retriever found {len(search_results['documents'])} documents in the database.")
     for i, doc in enumerate(search_results['documents']):
         print(f"  Doc {i}: {doc.page_content[:200]}")
-    return {"retrieved": search_results["documents"]}
+    return {"retrieved": search_results["documents"],"original_question": original_q}
 
 class DocumentGrade(BaseModel):
     doc_id: int = Field(description="The ID of the document chunk (e.g., 0, 1, 2)")
@@ -121,18 +127,42 @@ async def grade(state: RAGSubGraph):
         docs_string += f"\n<doc id='{i}'>\n{doc.page_content}\n</doc>\n"
 
     
-    system_prompt = """You are a strict relevance filter for SEC 10-K financial queries.
-
-    RULES:
-    - Grade 'pass' ONLY if the document chunk contains specific data that DIRECTLY answers the user's question.
-    - A chunk that merely mentions the same company, year, or general topic is NOT sufficient — grade it 'fail'.
-    - A chunk must contain actual numbers, figures, or explicit statements relevant to the specific question asked.
-
-    EXAMPLES:
-    Question: "What was the aggregate market value of non-affiliate stock as of March 26, 2021?"
-    - PASS: A chunk containing "aggregate market value... $X billion as of March 26, 2021"
-    - FAIL: A chunk saying "2021 Form 10-K" or "fiscal year 2021 annual report"
-    - FAIL: A chunk about revenue, expenses, or any other financial metric not asked about
+    system_prompt = """You are an expert document relevance evaluator for a SEC 10-K financial filing RAG system.
+ 
+    YOUR TASK:
+    Evaluate each provided document chunk and decide whether it contains information that is 
+    USEFUL to answering the user's question. You must evaluate EVERY document provided.
+    
+    GRADING FRAMEWORK — apply the correct rule based on question type:
+ 
+    TYPE A — QUANTITATIVE questions (asking for specific numbers, dates, dollar amounts):
+    PASS: Chunk contains the specific figure, date, or metric being asked about.
+    FAIL: Chunk is on the right topic but contains no actual numbers or specific data points.
+    
+    TYPE B — QUALITATIVE / RISK / STRATEGY questions (asking HOW, WHY, WHAT risks, WHAT strategies):
+    PASS: Chunk contains descriptive statements, risk factors, policies, or explanations 
+            that are directly relevant to the subject of the question.
+    FAIL: Chunk is about a completely different topic that shares no relevance to the question.
+    
+    TYPE C — MIXED questions (asking for both explanation and figures):
+    PASS: Chunk contains EITHER relevant qualitative context OR relevant quantitative data.
+    FAIL: Chunk is entirely off-topic.
+    
+    UNIVERSAL PASS CRITERIA — always pass if the chunk:
+    - Directly mentions the subject entity (company, product, process) in the question AND
+    - Provides any information (qualitative or quantitative) that helps understand 
+    or answer what was asked.
+ 
+    UNIVERSAL FAIL CRITERIA — always fail if the chunk:
+    - Is boilerplate legal language (e.g. "This document is filed with the SEC...")
+    - Is a table of contents, page header, or footer with no substantive content
+    - Is about a completely unrelated business segment, product, or topic
+    
+    IMPORTANT: Do NOT require numbers to pass a qualitative question. 
+    A chunk explaining supply chain risks IS relevant to a supply chain risk question
+    even if it contains no dollar figures.
+    
+    Output one evaluation object per document. Do not skip any document.
     """
 
     human_prompt = """
@@ -189,24 +219,39 @@ async def examiner(state: RAGSubGraph) -> Literal["Rewrite","Generate answer"]:
     
 async def gen_answer(state: RAGSubGraph):
     question = state["question"]
-    current_question = question[-1].content 
+    original_question = state.get("original_question", question[-1].content)
     possible_ans = state["structured_out"]
     context_string = "\n\n---\n\n".join([doc.page_content for doc in possible_ans])
     attempts = state.get("generation_attempts", 0)
     
-    system_prompt = """You are Aegis, an elite financial auditor. 
-    Your task is to generate answer to the user's question based on retrieved SEC 10-K document chunks.
-    Don't add any extra information give the answer strictly on the basis of the retrieved chunks or if you can't find the required resource just print I couldn't find the solution
-
-    STRICT RULES:
-    1. Answer ONLY using exact figures and text found in the retrieved document chunks below.
-    2. If the retrieved chunks do NOT contain the specific number, date, or fact being asked about, 
-    you MUST respond with EXACTLY: "The retrieved documents do not contain the specific data needed to answer this question."
-    3. NEVER infer, estimate, or paraphrase figures that aren't explicitly stated.
-    4. NEVER mention the fiscal year or any metadata unless it directly answers the question.
-    5. Quote exact numbers when found: "$X.XX billion" not "several billion dollars".
-    """
+    system_prompt = """You are Aegis, an elite financial analyst and SEC filing expert.
+    Your task is to answer the user's question using ONLY the retrieved SEC 10-K document chunks provided.
     
+    STRICT ANSWER RULES:
+    
+    1. ANSWER TYPE — adapt your answer to the question type:
+    - For QUANTITATIVE questions: quote exact figures, dates, and amounts verbatim from the chunks.
+    - For QUALITATIVE/RISK questions: synthesize the relevant statements from the chunks into 
+        a clear, structured explanation. Use bullet points if multiple risk factors are present.
+    - For MIXED questions: provide both the explanation and the specific figures.
+    
+    2. GROUNDING RULES:
+    - Every factual claim must be directly traceable to the retrieved chunks.
+    - Do NOT infer, extrapolate, or use external knowledge.
+    - Do NOT mention the fiscal year, company name, or document metadata unless it is 
+        DIRECTLY relevant to answering the question.
+    
+    3. IF DATA IS MISSING:
+    - If the chunks do not contain enough information to fully answer the question, state:
+        "The retrieved document sections do not contain sufficient information to fully answer 
+        this question. Here is what was found: [summarize what IS in the chunks]."
+    - Never fabricate data or make up figures.
+    
+    4. FORMAT:
+    - Be concise and precise. No preamble like "Based on the documents..." or "According to...".
+    - Start directly with the answer.
+    - Use bullet points for multi-part answers or lists of risk factors.
+    """
     human_prompt = """
     Carefully analyze the retrieved document chunks below:
     <retrieved_documents>
@@ -227,7 +272,7 @@ async def gen_answer(state: RAGSubGraph):
     
     result = await generating_ans.ainvoke({
         "possible_ans": context_string,
-        "question": current_question,
+        "question": original_question,
     })
     
     return {"answer": result.content,"generation_attempts": attempts + 1}
@@ -243,19 +288,30 @@ async def hal_check(state: RAGSubGraph):
     answer = state["answer"]
     possible_ans = state["structured_out"]
     context_string = "\n\n---\n\n".join([doc.page_content for doc in possible_ans])
-
-    system_prompt = """You are a strict auditor evaluating an AI-generated report. 
-    Your only task is to determine whether the generated answer is entirely grounded in the provided source documents.
-    If the answer contains ANY numbers, facts, or claims that are not explicitly stated in the source documents, it is a hallucination.
-    If it is a hallucination, grade it 'Hallucination'. If it is perfectly grounded, grade it 'No Hallucination'.
+    system_prompt = """You are a strict factual grounding auditor for a financial RAG system.
+ 
+    YOUR TASK:
+    Determine whether the generated answer is fully grounded in the provided source documents.
     
-    CRITICAL INSTRUCTION: You are a backend data processor. You MUST output strictly and ONLY valid JSON. 
-    Do NOT output any conversational text, preamble, or markdown blocks.
+    GROUNDING RULES — apply based on answer type:
     
-    EXAMPLE OUTPUT:
-    {{"reasoning": "The revenue numbers match the text.", "hallucination": "No Hallucination"}}
+    FOR QUANTITATIVE ANSWERS:
+    - Every number, dollar figure, date, and percentage must appear verbatim in the source documents.
+    - If the answer states a figure not present in the documents: HALLUCINATION.
+    
+    FOR QUALITATIVE ANSWERS (risk factors, strategies, descriptions):
+    - Every claim or statement must be inferable from the source documents.
+    - Paraphrasing and summarizing source content is acceptable and is NOT a hallucination.
+    - Only flag as hallucination if the answer introduces facts, entities, or claims 
+        that have no basis in any of the source documents.
+    
+    FOR "DATA NOT FOUND" ANSWERS:
+    - If the answer says the information was not found in the documents, grade it 'No Hallucination'
+        since it makes no unsupported claims.
+    
+    OUTPUT: Return only valid JSON with 'reasoning' and 'hallucination' fields.
     """
-
+    
     human_prompt = """
     Here are the source documents retrieved from the SEC 10-K:
     <documents>
@@ -301,29 +357,40 @@ structured_answer_validator = simple_llm.with_structured_output(cond_answer)
 async def answer_check(state: RAGSubGraph):
     answer = state["answer"]
     question = state["question"]
-    current_question = question[-1].content
+    original_question = state.get("original_question", question[-1].content)
 
-    system_prompt = """
-    You are Aegis, an expert finance auditor
-    You task is to evaluate the generated answer strictly based on the question 
+    system_prompt = """You are a senior quality assurance auditor for a financial RAG system.
+ 
+    YOUR TASK:
+    Evaluate whether the generated answer adequately addresses the user's original question.
     
-    Return 'sufficient' ONLY if ALL of these conditions are met:
-    1. The answer contains the SPECIFIC data point asked for (exact numbers, dates, dollar amounts).
-    2. The answer does NOT deflect with phrases like "the document mentions", "the fiscal year is", or "I couldn't find".
-    3. The answer directly and completely responds to what was asked.
-
-    Return 'not sufficient' if:
-    - The answer is vague, generic, or talks about the document structure instead of the data.
-    - The answer mentions a year/company name but not the specific metric requested.
-    - The answer says it couldn't find the information.
-
-    EXAMPLE:
-    Question: "What was the aggregate market value of non-affiliate stock as of March 26, 2021?"
-    SUFFICIENT answer: "The aggregate market value was $47.3 billion as of March 26, 2021."
-    NOT SUFFICIENT: "The document is a 2021 Form 10-K filing." ← This is a deflection, reject it.
+    SUFFICIENCY FRAMEWORK — adapt to question type:
     
-    CRITICAL INSTRUCTION: You are a backend data processor. You MUST output strictly and ONLY valid JSON. 
-    Do NOT output any conversational text, preamble, or markdown blocks.
+    FOR QUANTITATIVE QUESTIONS (specific numbers, dates, dollar amounts):
+    SUFFICIENT: Answer contains the specific figure or data point requested.
+    NOT SUFFICIENT: Answer is vague, deflects, or gives a generic description instead of the number.
+    
+    FOR QUALITATIVE QUESTIONS (how, why, what risks, what strategies, explanations):
+    SUFFICIENT: Answer provides a clear, relevant explanation that addresses the subject 
+                of the question with specific details from the documents.
+    NOT SUFFICIENT: Answer is a single generic sentence, entirely off-topic, or 
+                    just says "the document discusses X" without actual content.
+    
+    FOR "DATA NOT FOUND" ANSWERS:
+    SUFFICIENT: If the answer honestly states the information was not found AND 
+                explains what related information WAS found. This is a valid terminal state.
+    NOT SUFFICIENT: If the answer simply says "not found" with zero supporting context.
+    
+    ALWAYS MARK NOT SUFFICIENT IF:
+    - The answer talks about document metadata (form type, filing year) instead of the question topic.
+    - The answer is a deflection like "the document is a 10-K filing."
+    - The answer introduces information unrelated to what was asked.
+    
+    ALWAYS MARK SUFFICIENT IF:
+    - For qualitative questions: the answer provides substantive, relevant content 
+    even without specific numbers.
+    - The answer directly and completely addresses what was asked.
+ 
     EXAMPLE OUTPUT:
     {{"scoring": "sufficient"}}
 
@@ -338,6 +405,7 @@ async def answer_check(state: RAGSubGraph):
     <original_question>
     {question}
     </original_question>
+    Is this answer sufficient? Return JSON with 'scoring' field set to 'sufficient' or 'not sufficient'
     """
     
     prompt = ChatPromptTemplate.from_messages([
@@ -350,7 +418,7 @@ async def answer_check(state: RAGSubGraph):
     
     result = await gen_out.ainvoke({
         "answer": answer,
-        "question": current_question
+        "question": original_question
     })
     return {"is_sufficient": result.scoring}
 
@@ -374,25 +442,44 @@ async def rewrite_query(state: RAGSubGraph):
                 "answer": failure_msg, 
                 "rewritten": rewritten_count + 1
         }
-    original_user_question = question[-1].content
+    original_user_question = state.get("original_question", question[0].content)
     history_logs = []
     if len(question) > 1:
         for msg in question[1:]:
             prefix = "Feedback Loop Log" if "Human Feedback" in msg.content else "Previous Rewrite Attempt"
             history_logs.append(f"- {prefix}: '{msg.content}'")
     chat_history_string = "\n".join(history_logs) if history_logs else "No previous execution context."
-    system_prompt = """You are Aegis, an elite financial researcher and query optimization expert.
-    Your task is to take a user's question and rewrite it to be highly optimized for semantic vector search across SEC 10-K filings.
+    system_prompt = """You are Aegis, an elite SEC financial document search specialist.
+ 
+    YOUR TASK:
+    Rewrite the user's question into a new search query optimized for semantic vector search 
+    over SEC 10-K filings stored in a PostgreSQL vector database.
     
-    CRITICAL RULES:
-    1. DO NOT output a disconnected list of keywords. 
-    2. DO output a complete, natural-sounding, grammatically correct sentence or question.
-    3. Seamlessly weave relevant financial terms (like 'revenue', 'GAAP', 'fiscal year') into the natural sentence.
+    REWRITE STRATEGY — adapt based on question type:
     
-    BAD OUTPUT: "Q1 2026 revenue results GAAP financial performance"
-    GOOD OUTPUT: "What were the reported revenue results and GAAP financial performance for Q1 2026?"
+    FOR QUANTITATIVE QUESTIONS (specific numbers, dates, amounts):
+    - Include the specific metric name exactly as it would appear in the filing.
+    - Include any dates or fiscal periods mentioned.
+    - Use SEC filing terminology: "aggregate market value", "diluted EPS", "total revenue", etc.
+    - Example: "aggregate market value voting non-voting common stock non-affiliates March 2021"
     
-    Return ONLY the optimized natural language query.
+    FOR QUALITATIVE / RISK QUESTIONS (how, why, risks, strategies):
+    - Extract the core subject entities (e.g., "outsourcing partners", "supply chain", "Asia")
+    - Focus on the TOPIC not the question structure.
+    - Use terms that would appear in a Risk Factors or MD&A section.
+    - Example: "supply chain concentration risk single-source manufacturing outsourcing Asia"
+    
+    FOR STRATEGY / OPERATIONS QUESTIONS:
+    - Use operational terminology from 10-K filings.
+    - Focus on business units, segments, or processes mentioned.
+    
+    ANTI-PATTERNS — never do these:
+    - Do NOT add "GAAP", "fiscal year requirements", "accounting standards" unless specifically asked.
+        These terms dilute the semantic signal and confuse the retriever.
+    - Do NOT make the query longer and more complex each attempt — try SHORTER, more targeted queries.
+    - Do NOT repeat a query that already failed. Check the history and change the approach.
+    
+    OUTPUT: Return a single optimized search query as a natural language sentence or phrase.
     """
     
     human_prompt = """
@@ -431,8 +518,18 @@ async def decider(state:RAGSubGraph)->Literal["retriever", "output"]:
 async def to_parent(state: RAGSubGraph):
     final_ans = state.get("answer","Sorry couldn't find the answer for your query")
     docs = state.get("structured_out", [])
-    return {"output": final_ans, "documents": docs}
-
+    return {
+        "output":              final_ans,
+        "documents":           docs,
+        "original_question":   "",   # cleared for next turn
+        "rewritten":           0,    # reset counter
+        "generation_attempts": 0,    # reset counter
+        "answer":              "",   # clear so stale answer doesn't persist
+        "hallucination":       "",
+        "is_sufficient":       "",
+        "structured_out":      [],
+        "retrieved":           [],
+    }
 async def hitl(state:MainGraph):
     return state
 
